@@ -131,6 +131,12 @@ cd /data/data/com.termux/files/home/dtk-alpr/app
 bash ubuntu/run_ubuntu.sh --source file --input /path/to/sample.jpg --once
 ```
 
+From normal Termux:
+
+```bash
+bash ~/dtk-alpr/app/termux/run_photo_test.sh /sdcard/Download/alpr-samples/sample1.jpg
+```
+
 ## Local Video Test In Ubuntu
 
 ```bash
