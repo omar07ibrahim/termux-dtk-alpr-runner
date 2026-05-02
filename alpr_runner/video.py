@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duplicate-timeout-ms", type=int, default=1000)
     parser.add_argument("--max-zoom", type=float, default=4.0)
     parser.add_argument("--preview-every", type=int, default=0)
+    parser.add_argument("--status-print-interval", type=float, default=2.0)
     parser.add_argument("--allow-unlicensed", action="store_true")
     return parser.parse_args()
 
@@ -157,6 +158,8 @@ class VideoAlprRunner:
         if err != 0:
             raise RuntimeError(f"VideoCapture start failed: {err}")
 
+        last_print = 0.0
+        last_print_frames = 0
         try:
             while not self.stop_event.is_set():
                 time.sleep(0.25)
@@ -172,6 +175,17 @@ class VideoAlprRunner:
                         }
                     )
                 atomic_json(self.out_dir / "status.json", status)
+                now = time.time()
+                if self.args.status_print_interval > 0 and now - last_print >= self.args.status_print_interval:
+                    frame_delta = status["frames_seen"] - last_print_frames
+                    interval = max(0.001, now - last_print) if last_print > 0 else self.args.status_print_interval
+                    live_fps = frame_delta / interval
+                    print(
+                        f"{time.strftime('%Y-%m-%d %H:%M:%S')} | live frames={status['frames_seen']} "
+                        f"| fps={live_fps:.1f} | plates={status['plates_seen']}"
+                    )
+                    last_print = now
+                    last_print_frames = status["frames_seen"]
         except KeyboardInterrupt:
             pass
         finally:
