@@ -1,8 +1,25 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
+SCRIPT_APP="$(cd "$(dirname "$0")/.." && pwd)"
 APP_HOME="${APP_HOME:-$HOME/dtk-alpr}"
-APP_DST="$APP_HOME/app"
+APP_DST="${APP_DST:-$APP_HOME/app}"
+if [ ! -x "$APP_DST/ubuntu/run_multi_video.sh" ] && [ -x "$SCRIPT_APP/ubuntu/run_multi_video.sh" ]; then
+  APP_DST="$SCRIPT_APP"
+fi
+if [ ! -x "$APP_DST/ubuntu/run_multi_video.sh" ]; then
+  cat >&2 <<EOF
+ERROR: installed runner not found.
+
+Run installer first:
+  cd $SCRIPT_APP
+  bash termux/install.sh
+
+Then start:
+  bash $APP_HOME/app/termux/run_multi_camera_streams.sh ...
+EOF
+  exit 2
+fi
 
 URL1="${1:-${CAMERA1_STREAM_URL:-}}"
 URL2="${2:-${CAMERA2_STREAM_URL:-}}"

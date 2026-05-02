@@ -11,8 +11,13 @@ pkg update -y
 pkg install -y proot-distro termux-api rsync unzip
 
 echo "[2/5] Installing Ubuntu proot"
-if ! proot-distro list | grep -A2 '^  ubuntu' | grep -q installed; then
-  proot-distro install ubuntu
+if proot-distro login ubuntu -- true >/dev/null 2>&1; then
+  echo "Ubuntu proot is already installed"
+else
+  proot-distro install ubuntu || {
+    echo "Ubuntu install command failed. If it says already installed, continuing."
+    proot-distro login ubuntu -- true >/dev/null 2>&1
+  }
 fi
 
 echo "[3/5] Copying runner to $APP_DST"
@@ -79,7 +84,7 @@ cat <<EOF
 Done.
 
 Start:
-  bash $APP_DST/termux/run_phone.sh
+  bash $APP_DST/termux/run_camera_stream.sh
 
 Dashboard:
   http://127.0.0.1:8765/
