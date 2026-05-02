@@ -26,6 +26,8 @@ def parse_args() -> argparse.Namespace:
     source.add_argument("--file")
     source.add_argument("--rtsp")
     source.add_argument("--device", type=int)
+    parser.add_argument("--rtsp-over-tcp", dest="rtsp_over_tcp", action="store_true", default=True)
+    parser.add_argument("--rtsp-over-udp", dest="rtsp_over_tcp", action="store_false")
     parser.add_argument("--device-width", type=int, default=1280)
     parser.add_argument("--device-height", type=int, default=720)
     parser.add_argument("--repeat", type=int, default=1)
@@ -72,6 +74,10 @@ class DtkVideoLibrary:
         self.lib.VideoCapture_StartCaptureFromDevice.restype = c_int
         self.lib.VideoCapture_StopCapture.argtypes = [c_void_p]
         self.lib.VideoCapture_StopCapture.restype = c_int
+        self.lib.VideoCapture_SetRtspOverTcp.argtypes = [c_void_p, c_bool]
+        self.lib.VideoCapture_SetRtspOverTcp.restype = None
+        self.lib.VideoCapture_GetRtspOverTcp.argtypes = [c_void_p]
+        self.lib.VideoCapture_GetRtspOverTcp.restype = c_bool
         self.lib.VideoFrame_Release.argtypes = [c_void_p]
         self.lib.VideoFrame_Release.restype = c_int
         self.lib.VideoFrame_GetWidth.argtypes = [c_void_p]
@@ -144,6 +150,8 @@ class VideoAlprRunner:
                 self.args.repeat,
             )
         elif self.args.rtsp:
+            self.video_lib.lib.VideoCapture_SetRtspOverTcp(self.capture, bool(self.args.rtsp_over_tcp))
+            print(f"RTSP transport: {'TCP' if self.args.rtsp_over_tcp else 'UDP'}")
             err = self.video_lib.lib.VideoCapture_StartCaptureFromIPCamera(
                 self.capture,
                 self.args.rtsp.encode("utf-8"),
@@ -206,7 +214,12 @@ class VideoAlprRunner:
             self.video_lib.lib.VideoFrame_Release(frame)
 
     def _on_error(self, _capture: ctypes.c_void_p, error_code: int, _custom: ctypes.c_void_p) -> None:
-        print(f"VideoCapture error: {error_code}")
+        meanings = {
+            1: "ERR_CAPTURE_OPEN_VIDEO",
+            2: "ERR_CAPTURE_READ_FRAME",
+            3: "ERR_CAPTURE_EOF",
+        }
+        print(f"VideoCapture error: {error_code} ({meanings.get(error_code, 'unknown')})")
         if error_code == ERR_CAPTURE_EOF:
             self.stop_event.set()
 

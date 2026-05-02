@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rtsp", action="append", default=[], help="RTSP/IP camera URL. Repeat for each camera.")
     parser.add_argument("--file", action="append", default=[], help="Video file for testing. Repeat for each stream.")
     parser.add_argument("--device", action="append", type=int, default=[], help="Linux /dev/video index if available.")
+    parser.add_argument("--rtsp-over-tcp", dest="rtsp_over_tcp", action="store_true", default=True)
+    parser.add_argument("--rtsp-over-udp", dest="rtsp_over_tcp", action="store_false")
     parser.add_argument("--stream-name", action="append", default=[], help="Optional camera name. Repeat in source order.")
     parser.add_argument("--device-width", type=int, default=1280)
     parser.add_argument("--device-height", type=int, default=720)
@@ -256,6 +258,7 @@ class StreamWorker:
                 self.args.repeat,
             )
         elif self.source.kind == "rtsp":
+            self.video_lib.lib.VideoCapture_SetRtspOverTcp(self.capture, bool(self.args.rtsp_over_tcp))
             err = self.video_lib.lib.VideoCapture_StartCaptureFromIPCamera(
                 self.capture,
                 str(self.source.value).encode("utf-8"),
@@ -320,7 +323,12 @@ class StreamWorker:
         error = {"time": local_time(), "code": int(error_code)}
         with self.lock:
             self.last_error = error
-        print(f"{self.source.name}: VideoCapture error: {error_code}")
+        meanings = {
+            1: "ERR_CAPTURE_OPEN_VIDEO",
+            2: "ERR_CAPTURE_READ_FRAME",
+            3: "ERR_CAPTURE_EOF",
+        }
+        print(f"{self.source.name}: VideoCapture error: {error_code} ({meanings.get(error_code, 'unknown')})")
         if error_code == ERR_CAPTURE_EOF:
             self.done_event.set()
 
