@@ -51,8 +51,16 @@ bash termux/install.sh
 5. Start the high-performance video runner from a real camera stream:
 
 ```bash
-bash ~/dtk-alpr/app/termux/run_camera_stream.sh rtsp://127.0.0.1:8554/live
+bash ~/dtk-alpr/app/termux/run_camera_stream.sh
 ```
+
+The Android APK starts a local H.264 RTSP camera stream at:
+
+```text
+rtsp://127.0.0.1:8554/live
+```
+
+Termux reads that local stream and feeds it to DTK video mode.
 
 For three cameras, expose three RTSP/H.264 streams and run:
 
@@ -133,6 +141,12 @@ For RTSP camera:
 
 ```bash
 bash ubuntu/run_video.sh --rtsp rtsp://user:pass@host:554/stream1 --preview-every 0
+```
+
+For the companion Android APK local stream:
+
+```bash
+bash ubuntu/run_video.sh --rtsp rtsp://127.0.0.1:8554/live --preview-every 0
 ```
 
 For three video streams:

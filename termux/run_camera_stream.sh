@@ -4,13 +4,21 @@ set -euo pipefail
 APP_HOME="${APP_HOME:-$HOME/dtk-alpr}"
 APP_DST="$APP_HOME/app"
 
-URL="${1:-${CAMERA_STREAM_URL:-}}"
+URL="${1:-${CAMERA_STREAM_URL:-rtsp://127.0.0.1:8554/live}}"
 if [ -z "$URL" ]; then
   cat >&2 <<'EOF'
 ERROR: camera stream URL is required.
 
-Use a real video stream from the phone camera, for example from an Android
-RTSP/IP-camera app, then run:
+Use a real video stream from the phone camera. The companion Android APK
+starts this stream locally:
+
+  rtsp://127.0.0.1:8554/live
+
+So the normal command is simply:
+
+  bash ~/dtk-alpr/app/termux/run_camera_stream.sh
+
+For an external RTSP/IP-camera app, run:
 
   bash ~/dtk-alpr/app/termux/run_camera_stream.sh rtsp://127.0.0.1:8554/live
 
