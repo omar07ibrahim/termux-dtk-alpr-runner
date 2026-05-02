@@ -80,10 +80,21 @@ class DtkVideoLibrary:
         self.lib.VideoCapture_GetRtspOverTcp.restype = c_bool
         self.lib.VideoFrame_Release.argtypes = [c_void_p]
         self.lib.VideoFrame_Release.restype = c_int
+        self.lib.VideoFrame_CreateFromImageBuffer.argtypes = [
+            c_void_p,
+            c_int,
+            c_int,
+            c_int,
+            c_int,
+            ctypes.c_int64,
+        ]
+        self.lib.VideoFrame_CreateFromImageBuffer.restype = c_void_p
         self.lib.VideoFrame_GetWidth.argtypes = [c_void_p]
         self.lib.VideoFrame_GetWidth.restype = c_int
         self.lib.VideoFrame_GetHeight.argtypes = [c_void_p]
         self.lib.VideoFrame_GetHeight.restype = c_int
+        self.lib.VideoFrame_Timestamp.argtypes = [c_void_p]
+        self.lib.VideoFrame_Timestamp.restype = ctypes.c_int64
         self.lib.VideoFrame_GetImageBuffer.argtypes = [
             c_void_p,
             c_int,

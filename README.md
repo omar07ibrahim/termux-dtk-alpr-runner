@@ -13,6 +13,7 @@ It is not an Android APK and it is not trying to load Linux `.so` files through 
 
 - Runs DTK LPR inside Ubuntu using `libDTKLPR.so`.
 - Runs DTK **video mode** using `libDTKVID.so` for RTSP/IP-camera streams.
+- Uses `ffmpeg` as the default RTSP decoder and feeds DTK video frames through `VideoFrame_CreateFromImageBuffer`.
 - Runs **multi-camera mode** with one DTK video engine per stream.
 - Deduplicates the same plate text across all cameras and increments `count` instead of creating spam events.
 - Selects the best visible target.
@@ -60,7 +61,8 @@ The Android APK starts a local H.264 RTSP camera stream at:
 rtsp://127.0.0.1:8554/live
 ```
 
-Termux reads that local stream and feeds it to DTK video mode.
+Termux reads that local stream with `ffmpeg` and feeds raw frames to DTK video mode.
+This avoids DTKVID's fragile IP-camera opener while still using DTK's video engine.
 
 For three cameras, expose three RTSP/H.264 streams and run:
 
@@ -174,7 +176,13 @@ bash ubuntu/run_video.sh --rtsp rtsp://user:pass@host:554/stream1 --preview-ever
 For the companion Android APK local stream:
 
 ```bash
-bash ubuntu/run_video.sh --rtsp rtsp://127.0.0.1:8554/live --preview-every 0
+bash ubuntu/run_ffmpeg_video.sh --rtsp rtsp://127.0.0.1:8554/live --preview-every 20
+```
+
+The old DTKVID capture backend is still available for comparison:
+
+```bash
+CAPTURE_BACKEND=dtkvid bash ~/dtk-alpr/app/termux/run_camera_stream.sh
 ```
 
 For three video streams:

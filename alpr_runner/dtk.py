@@ -191,6 +191,7 @@ class DtkLpr:
         self.lib.LPREngine_Create.argtypes = [c_void_p, c_bool, c_void_p]
         self.lib.LPREngine_Create.restype = c_void_p
         self.lib.LPREngine_Destroy.argtypes = [c_void_p]
+        self.lib.LPREngine_SetFrameProcessingCompletedCallback.argtypes = [c_void_p, c_void_p]
         self.lib.LPREngine_IsLicensed.argtypes = [c_void_p]
         self.lib.LPREngine_IsLicensed.restype = c_int
         self.lib.LPREngine_ReadFromFile.argtypes = [c_void_p, c_char_p]

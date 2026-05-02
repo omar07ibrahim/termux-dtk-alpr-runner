@@ -54,18 +54,36 @@ ACCUMULATION_MS="${ACCUMULATION_MS:-0}"
 DUPLICATE_TIMEOUT_MS="${DUPLICATE_TIMEOUT_MS:-600}"
 PREVIEW_EVERY="${PREVIEW_EVERY:-0}"
 MAX_ZOOM="${MAX_ZOOM:-4.0}"
+CAPTURE_BACKEND="${CAPTURE_BACKEND:-ffmpeg}"
+STREAM_WIDTH="${STREAM_WIDTH:-1280}"
+STREAM_HEIGHT="${STREAM_HEIGHT:-720}"
+STREAM_FPS="${STREAM_FPS:-20}"
 
 echo "Starting DTK video mode from camera stream:"
 echo "  $URL"
 echo "Profile:"
-echo "  fps_limit=$FPS_LIMIT confirmations=$CONFIRMATIONS accumulation_ms=$ACCUMULATION_MS duplicate_timeout_ms=$DUPLICATE_TIMEOUT_MS"
+echo "  backend=$CAPTURE_BACKEND fps_limit=$FPS_LIMIT confirmations=$CONFIRMATIONS accumulation_ms=$ACCUMULATION_MS duplicate_timeout_ms=$DUPLICATE_TIMEOUT_MS"
 echo
 
-proot-distro login ubuntu --shared-tmp -- bash "$APP_DST/ubuntu/run_video.sh" \
-  --rtsp "$URL" \
-  --fps-limit "$FPS_LIMIT" \
-  --confirmations "$CONFIRMATIONS" \
-  --accumulation-ms "$ACCUMULATION_MS" \
-  --duplicate-timeout-ms "$DUPLICATE_TIMEOUT_MS" \
-  --preview-every "$PREVIEW_EVERY" \
-  --max-zoom "$MAX_ZOOM"
+if [ "$CAPTURE_BACKEND" = "dtkvid" ]; then
+  proot-distro login ubuntu --shared-tmp -- bash "$APP_DST/ubuntu/run_video.sh" \
+    --rtsp "$URL" \
+    --fps-limit "$FPS_LIMIT" \
+    --confirmations "$CONFIRMATIONS" \
+    --accumulation-ms "$ACCUMULATION_MS" \
+    --duplicate-timeout-ms "$DUPLICATE_TIMEOUT_MS" \
+    --preview-every "$PREVIEW_EVERY" \
+    --max-zoom "$MAX_ZOOM"
+else
+  proot-distro login ubuntu --shared-tmp -- bash "$APP_DST/ubuntu/run_ffmpeg_video.sh" \
+    --rtsp "$URL" \
+    --width "$STREAM_WIDTH" \
+    --height "$STREAM_HEIGHT" \
+    --fps "$STREAM_FPS" \
+    --fps-limit "$FPS_LIMIT" \
+    --confirmations "$CONFIRMATIONS" \
+    --accumulation-ms "$ACCUMULATION_MS" \
+    --duplicate-timeout-ms "$DUPLICATE_TIMEOUT_MS" \
+    --preview-every "${PREVIEW_EVERY:-20}" \
+    --max-zoom "$MAX_ZOOM"
+fi
