@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+runtime/
+runtime-video/
+runtime-multi/
+vendor/arm64/*
+!vendor/arm64/README.md
+arm64/
+arm64.zip
