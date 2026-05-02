@@ -137,6 +137,28 @@ bash ubuntu/run_ubuntu.sh --source file --input /path/to/sample.jpg --once
 bash ubuntu/run_video.sh --file /path/to/video.mp4 --repeat 1 --preview-every 0
 ```
 
+## DTK License
+
+If DTK prints error `2`, it usually means the engine has no activated
+recognition channel. Check the license from Termux:
+
+```bash
+bash ~/dtk-alpr/app/termux/activate_license.sh
+```
+
+Online activation:
+
+```bash
+bash ~/dtk-alpr/app/termux/activate_license.sh YOUR_LICENSE_KEY
+```
+
+Offline activation:
+
+```bash
+bash ~/dtk-alpr/app/termux/activate_license.sh getactlink YOUR_LICENSE_KEY
+bash ~/dtk-alpr/app/termux/activate_license.sh setactcode YOUR_ACTIVATION_CODE
+```
+
 For RTSP camera:
 
 ```bash
