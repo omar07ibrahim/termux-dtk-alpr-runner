@@ -34,10 +34,73 @@ It is not an Android APK and it is not trying to load Linux `.so` files through 
 - Writes `latest.jpg`, `latest_zoom.jpg`, `status.json`, and `zoom_command.json`.
 - Serves a small local dashboard at `http://127.0.0.1:8765/`.
 
-The high-performance path is video stream mode, not `termux-camera-photo`.
-Termux:API only gives photo snapshots, so it is not acceptable for maximum LPR performance.
+The intended continuous-stream path is video mode, not
+`termux-camera-photo`, because Termux:API exposes individual photo captures
+rather than a continuous frame stream. No throughput comparison or
+"maximum-performance" result is published yet.
 
 The current zoom is software zoom. Termux/proot does not expose Camera2 hardware zoom controls. The emitted `zoom_command.json` is designed so a later motor/PTZ controller can consume the target center and pan/tilt error.
+
+## Reproducible vendor-independent evidence
+
+The repository includes one deliberately narrow evidence path that needs no
+camera, image, DTK binary, license, network access, or third-party Python
+package. Five validated `SYNTH-*` events exercise the production
+plate-to-target geometry, per-camera zoom controller, and cross-camera
+aggregation registry. They do **not** exercise or imitate ALPR recognition.
+
+Run the public fixture directly:
+
+```bash
+mkdir -p .t/manual-synthetic
+python3.12 -S -m alpr_runner.synthetic \
+  --trace examples/synthetic-events-v1.json \
+  --out .t/manual-synthetic
+```
+
+Verify every committed artifact by running the CLI twice in separate private
+workspaces, checking byte determinism, source hashes, privacy boundaries, SVG
+accessibility, and the exact generated-file inventory:
+
+```bash
+python3.12 -S tools/render_readme_visuals.py --check
+```
+
+Maintainers rebuild the bundle explicitly with `--write`; publication stages
+every file, atomically replaces each allowlisted destination, and replaces the
+manifest last. The canonical fixture is byte-tied to
+`synthetic.default_trace()`. CLI stdout must exactly match the canonical
+summary of the JSON result, while the published transcript adds only a
+path-normalized command line and an explicit exit marker. CI runs the same
+`--check` contract.
+
+![Path-normalized deterministic synthetic-event terminal evidence](docs/visuals/generated/terminal-evidence.svg)
+
+![Runtime-derived cross-camera event flow](docs/visuals/generated/event-flow.svg)
+
+![Runtime-derived software zoom geometry with no image pixels](docs/visuals/generated/zoom-geometry.svg)
+
+The next two figures explain boundaries and setup. They are intentionally
+labeled as architecture/workflow material, not as runtime proof.
+
+![Architecture boundary separating verified orchestration from external recognition](docs/visuals/generated/architecture-boundary.svg)
+
+![Evidence reproduction workflow](docs/visuals/generated/setup-workflow.svg)
+
+| Evidence | Derivation | What it verifies | Explicitly not verified |
+|---|---|---|---|
+| [CLI transcript](docs/visuals/generated/terminal-transcript.txt) and [terminal evidence](docs/visuals/generated/terminal-evidence.svg) | Exact stdout from two byte-identical runs, framed by a renderer-added path-normalized command and `exit=0` marker | Public command shape, five-event/two-camera execution, explicit non-recognition boundary | A literal screen capture, ALPR accuracy, camera compatibility, SDK execution |
+| [Synthetic result](docs/visuals/generated/synthetic-result.json) | Actual private-mode CLI artifact | Canonical fixture ingestion, aggregation counts, target and zoom data | Exhaustive validation, image processing, detection quality, latency or throughput |
+| [Event flow](docs/visuals/generated/event-flow.svg) | Drawn from the result's five events | Cross-camera deduplication and aggregate state | Production traffic or real plates |
+| [Zoom geometry](docs/visuals/generated/zoom-geometry.svg) | Drawn from final normalized target/crop coordinates | Geometry and bounded per-camera zoom state | Pixel crop quality, optical zoom, PTZ control |
+| [Architecture](docs/visuals/generated/architecture-boundary.svg) / [workflow](docs/visuals/generated/setup-workflow.svg) | Explanatory diagrams | Trust boundary and reproduction steps | Runtime behavior |
+| [SHA-256 manifest](docs/visuals/generated/manifest.sha256.json) | Renderer inventory and source snapshot | Exact inputs, outputs, evidence labels, byte currency | Artifact signing or third-party attestation |
+
+No GIF or video is published for this event-level demo because animation would
+add no verified information beyond the exact-summary-bound transcript, event
+sequence, and geometry figures. A future media fixture should add video only
+when it can demonstrate a new, reproducible property without proprietary or
+personal data.
 
 ## Phone Install
 
@@ -61,7 +124,7 @@ cd ~/termux-dtk-alpr
 bash termux/install.sh
 ```
 
-5. Start the high-performance video runner from a real camera stream:
+5. Start the continuous-stream runner from a real camera stream:
 
 ```bash
 bash ~/dtk-alpr/app/termux/run_camera_stream.sh
@@ -73,8 +136,8 @@ The Android APK starts a local H.264 RTSP camera stream at:
 rtsp://127.0.0.1:8554/live
 ```
 
-Termux reads that local stream with `ffmpeg` and feeds raw frames to DTK video mode.
-This avoids DTKVID's fragile IP-camera opener while still using DTK's video engine.
+Termux reads that local stream with `ffmpeg` and feeds raw frames to DTK video
+mode, keeping RTSP decoding in FFmpeg while still using DTK's video engine.
 
 For three cameras, expose three RTSP/H.264 streams and run:
 
@@ -97,17 +160,19 @@ If the same plate appears again, the runner updates the same entry:
 
 ```json
 {
-  "key": "AB1234",
-  "text": "AB-1234",
+  "key": "SYNTH01",
+  "text": "SYNTH-01",
   "count": 17,
   "cameras": {
-    "cam1": 11,
-    "cam3": 6
+    "SYNTH-CAM-01": 11,
+    "SYNTH-CAM-02": 6
   }
 }
 ```
 
-Use a phone camera streamer that can output RTSP/H.264. Recommended camera profile:
+Use a phone camera streamer that can output RTSP/H.264. The following is an
+unbenchmarked starting profile for manual compatibility testing, not a measured
+performance recommendation:
 
 ```text
 1280x720
@@ -117,14 +182,16 @@ fixed focus / continuous video focus
 disable beauty/HDR/stabilization if latency matters
 ```
 
-For three cameras, start with `THREADS_PER_ENGINE=1`. If the phone has CPU headroom,
-try `THREADS_PER_ENGINE=2`. Do not use heavy previews while tuning performance:
+For three cameras, the current scripts default to
+`THREADS_PER_ENGINE=1`. Trying `THREADS_PER_ENGINE=2` and reducing preview
+frequency are manual tuning heuristics; the repository does not yet publish
+comparative measurements:
 
 ```bash
 THREADS_PER_ENGINE=1 PREVIEW_EVERY=0 bash ~/dtk-alpr/app/termux/run_multi_camera_streams.sh ...
 ```
 
-Fallback snapshot mode exists, but it is not the performance path:
+Fallback snapshot mode exists, but it is not the continuous-stream path:
 
 ```bash
 bash ~/dtk-alpr/app/termux/run_phone.sh
@@ -213,15 +280,6 @@ bash ubuntu/run_multi_video.sh \
   --threads 1 \
   --preview-every 0
 ```
-
-## Evidence status
-
-Earlier development runs exercised the proprietary SDK with still images and a
-video stream. Their media, license state, host environment, and raw detections
-are not committed, so those observations are not presented as reproducible
-portfolio evidence. Future published evidence must use redistributable
-synthetic media, record the exact runner and environment contract, and clearly
-separate throughput from recognition quality.
 
 ## Privacy and deployment safety
 

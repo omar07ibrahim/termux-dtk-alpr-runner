@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="505" viewBox="0 0 1120 505" role="img" aria-labelledby="event-flow-title event-flow-description">
+  <title id="event-flow-title">Runtime-derived synthetic event flow</title>
+  <desc id="event-flow-description">Five deterministic fake events pass through two synthetic cameras and aggregate into two tokens.</desc>
+  <rect width="1120" height="505" rx="18" fill="#08111f"/>
+  <text x="48.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Runtime-derived event flow</text>
+  <text x="48.00" y="76.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="400" fill="#9fb3cc" text-anchor="start">5 validated events → cross-camera registry → 2 aggregate tokens</text>
+  <line x1="125" y1="185" x2="995" y2="185" stroke="#4b6382" stroke-width="4"/>
+  <circle cx="125.00" cy="185" r="18" fill="#58d6a8" stroke="#08111f" stroke-width="5"/>
+  <rect x="34.00" y="112" width="182" height="52" rx="9" fill="#14243a" stroke="#58d6a8"/>
+  <text x="125.00" y="134.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#dce8f7" text-anchor="middle">SYNTH-CAM-01</text>
+  <text x="125.00" y="153.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">00:00:00.000</text>
+  <rect x="43.00" y="218" width="164" height="82" rx="10" fill="#101a2a" stroke="#31415c"/>
+  <text x="125.00" y="244.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#58d6a8" text-anchor="middle">SYNTH-01</text>
+  <text x="125.00" y="269.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">aggregate count 1</text>
+  <text x="125.00" y="289.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">new token</text>
+  <circle cx="342.50" cy="185" r="18" fill="#7aa7ff" stroke="#08111f" stroke-width="5"/>
+  <rect x="251.50" y="112" width="182" height="52" rx="9" fill="#14243a" stroke="#7aa7ff"/>
+  <text x="342.50" y="134.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#dce8f7" text-anchor="middle">SYNTH-CAM-02</text>
+  <text x="342.50" y="153.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">00:00:00.250</text>
+  <rect x="260.50" y="218" width="164" height="82" rx="10" fill="#101a2a" stroke="#31415c"/>
+  <text x="342.50" y="244.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#7aa7ff" text-anchor="middle">SYNTH-02</text>
+  <text x="342.50" y="269.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">aggregate count 1</text>
+  <text x="342.50" y="289.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">new token</text>
+  <circle cx="560.00" cy="185" r="18" fill="#58d6a8" stroke="#08111f" stroke-width="5"/>
+  <rect x="469.00" y="112" width="182" height="52" rx="9" fill="#14243a" stroke="#58d6a8"/>
+  <text x="560.00" y="134.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#dce8f7" text-anchor="middle">SYNTH-CAM-02</text>
+  <text x="560.00" y="153.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">00:00:00.500</text>
+  <rect x="478.00" y="218" width="164" height="82" rx="10" fill="#101a2a" stroke="#31415c"/>
+  <text x="560.00" y="244.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#58d6a8" text-anchor="middle">SYNTH-01</text>
+  <text x="560.00" y="269.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">aggregate count 2</text>
+  <text x="560.00" y="289.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">deduplicated</text>
+  <circle cx="777.50" cy="185" r="18" fill="#7aa7ff" stroke="#08111f" stroke-width="5"/>
+  <rect x="686.50" y="112" width="182" height="52" rx="9" fill="#14243a" stroke="#7aa7ff"/>
+  <text x="777.50" y="134.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#dce8f7" text-anchor="middle">SYNTH-CAM-01</text>
+  <text x="777.50" y="153.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">00:00:00.900</text>
+  <rect x="695.50" y="218" width="164" height="82" rx="10" fill="#101a2a" stroke="#31415c"/>
+  <text x="777.50" y="244.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#7aa7ff" text-anchor="middle">SYNTH-02</text>
+  <text x="777.50" y="269.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">aggregate count 2</text>
+  <text x="777.50" y="289.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">deduplicated</text>
+  <circle cx="995.00" cy="185" r="18" fill="#58d6a8" stroke="#08111f" stroke-width="5"/>
+  <rect x="904.00" y="112" width="182" height="52" rx="9" fill="#14243a" stroke="#58d6a8"/>
+  <text x="995.00" y="134.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#dce8f7" text-anchor="middle">SYNTH-CAM-01</text>
+  <text x="995.00" y="153.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">00:00:01.250</text>
+  <rect x="913.00" y="218" width="164" height="82" rx="10" fill="#101a2a" stroke="#31415c"/>
+  <text x="995.00" y="244.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#58d6a8" text-anchor="middle">SYNTH-01</text>
+  <text x="995.00" y="269.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">aggregate count 3</text>
+  <text x="995.00" y="289.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">deduplicated</text>
+  <rect x="250" y="342" width="620" height="92" rx="14" fill="#10253a" stroke="#3a5878"/>
+  <text x="560.00" y="372.00" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#dce8f7" text-anchor="middle">Final cross-camera aggregation</text>
+  <text x="405.00" y="402.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#58d6a8" text-anchor="middle">SYNTH-01: 3 events</text>
+  <text x="405.00" y="422.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">SYNTH-CAM-01 + SYNTH-CAM-02</text>
+  <text x="715.00" y="402.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#7aa7ff" text-anchor="middle">SYNTH-02: 2 events</text>
+  <text x="715.00" y="422.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="400" fill="#9fb3cc" text-anchor="middle">SYNTH-CAM-01 + SYNTH-CAM-02</text>
+  <text x="560.00" y="473.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#86b7ff" text-anchor="middle">Derived from synthetic-result.json · orchestration evidence, not recognition evidence</text>
+</svg>

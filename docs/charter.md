@@ -17,8 +17,13 @@ model.
 - FFmpeg raw-RGB frame delivery over a pipe.
 - A multi-camera worker model with per-camera recognition engines.
 - Cross-camera plate aggregation and software zoom targeting.
+- A strict, deterministic fake-event CLI that reuses the production
+  aggregation and zoom-geometry modules without loading images or an SDK.
 - Loopback-only status dashboard and JSON/image runtime outputs.
 - Private-mode runtime directories and files with redacted source descriptors.
+- A reproducible evidence renderer with two byte-identical CLI runs, bounded
+  subprocess streams, exact generated-tree checks, source hashes, privacy
+  scans, accessible SVG validation, and manifest-last publication.
 - Termux/proot setup and launch scripts.
 
 ## Required external components
@@ -39,6 +44,10 @@ These components are not vendored or fetched automatically by the repository.
 - No authentication, authorization, TLS, or multi-user dashboard boundary.
 - No retention, encryption, redaction, or deletion policy for runtime data.
 - No claim that a proprietary SDK result is independently reproducible.
+- The committed synthetic evidence executes one canonical validated event
+  trace through orchestration, aggregation, and normalized zoom geometry. It
+  does not prove exhaustive validation, recognition, media decoding, camera
+  integration, accuracy, latency, or throughput.
 
 ## Portfolio-grade release criteria
 
@@ -54,6 +63,14 @@ Before a release is described as reproducible, the repository must have:
 8. a machine-readable evidence manifest and byte-current visual checks; and
 9. a declared license for the repository-owned source.
 
+The event-level evidence bundle now covers criterion 2, part of 6, part of 7,
+and criterion 8 for its vendor-independent boundary. Criterion 5 is not
+complete because the repository-owned fixture has no granted redistribution
+license yet. The bundle does not make the broader camera/SDK project
+reproducible: the dependency contract, bounded media subprocess behavior,
+dashboard evidence, failure-path coverage, and repository license remain
+release work.
+
 ## Evidence policy
 
 Screenshots and performance charts must come from an actual recorded run and
@@ -61,3 +78,11 @@ must state its hardware, software, media, and proprietary-SDK boundaries.
 Hand-authored diagrams may explain architecture, but they must be labeled as
 architecture rather than runtime proof. Real plate numbers, private camera
 addresses, license material, and host-specific paths must never be committed.
+
+The current bundle uses only `SYNTH-01`, `SYNTH-02`, and
+`SYNTH-CAM-01`/`SYNTH-CAM-02`. Its terminal evidence is rendered from exact
+canonical-summary stdout with a path-normalized command and exit marker added
+by the renderer; its event-flow and zoom figures are derived from the actual
+JSON artifact; its architecture and setup figures are explicitly explanatory.
+There is no GIF or video because the fixture has no pixels and animation would
+not establish an additional verified property.

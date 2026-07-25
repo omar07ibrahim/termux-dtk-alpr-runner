@@ -1,0 +1,430 @@
+{
+  "aggregation": {
+    "event_count": 5,
+    "tokens": [
+      {
+        "cameras": {
+          "SYNTH-CAM-01": 2,
+          "SYNTH-CAM-02": 1
+        },
+        "event_count": 3,
+        "first_seen": "2026-01-01T00:00:00.000Z",
+        "last_camera": "SYNTH-CAM-01",
+        "last_frame": {
+          "height": 720,
+          "width": 1280
+        },
+        "last_seen": "2026-01-01T00:00:01.250Z",
+        "last_target": {
+          "bottom": 0.6541666666666667,
+          "label": "synthetic-token:SYNTH-01",
+          "left": 0.023750000000000104,
+          "right": 0.5340624999999999,
+          "score": 0.1,
+          "top": 0.39861111111111114
+        },
+        "last_zoom": {
+          "crop": {
+            "bottom": 0.7814128193236716,
+            "label": "software-zoom",
+            "left": 0.14869823956521738,
+            "right": 0.6921765004347826,
+            "score": 1.84,
+            "top": 0.23793455845410638
+          },
+          "motor_hint": {
+            "pan_left_right": -0.22109374999999998,
+            "tilt_up_down": 0.026388888888888906
+          },
+          "pan_error_x": -0.22109374999999998,
+          "pan_error_y": 0.026388888888888906,
+          "reason": "zoom target synthetic-token:SYNTH-01",
+          "target": {
+            "bottom": 0.6541666666666667,
+            "label": "synthetic-token:SYNTH-01",
+            "left": 0.023750000000000104,
+            "right": 0.5340624999999999,
+            "score": 0.1,
+            "top": 0.39861111111111114
+          },
+          "zoom_ratio": 1.84
+        },
+        "normalized_key": "SYNTH01",
+        "token": "SYNTH-01"
+      },
+      {
+        "cameras": {
+          "SYNTH-CAM-01": 1,
+          "SYNTH-CAM-02": 1
+        },
+        "event_count": 2,
+        "first_seen": "2026-01-01T00:00:00.250Z",
+        "last_camera": "SYNTH-CAM-01",
+        "last_frame": {
+          "height": 720,
+          "width": 1280
+        },
+        "last_seen": "2026-01-01T00:00:00.900Z",
+        "last_target": {
+          "bottom": 0.6277777777777778,
+          "label": "synthetic-token:SYNTH-02",
+          "left": 0.3428124999999999,
+          "right": 0.89625,
+          "score": 0.1,
+          "top": 0.338888888888889
+        },
+        "last_zoom": {
+          "crop": {
+            "bottom": 0.823686153846154,
+            "label": "software-zoom",
+            "left": 0.15496442948717948,
+            "right": 0.7959900705128204,
+            "score": 1.56,
+            "top": 0.182660512820513
+          },
+          "motor_hint": {
+            "pan_left_right": 0.11953124999999998,
+            "tilt_up_down": -0.016666666666666607
+          },
+          "pan_error_x": 0.11953124999999998,
+          "pan_error_y": -0.016666666666666607,
+          "reason": "zoom target synthetic-token:SYNTH-02",
+          "target": {
+            "bottom": 0.6277777777777778,
+            "label": "synthetic-token:SYNTH-02",
+            "left": 0.3428124999999999,
+            "right": 0.89625,
+            "score": 0.1,
+            "top": 0.338888888888889
+          },
+          "zoom_ratio": 1.56
+        },
+        "normalized_key": "SYNTH02",
+        "token": "SYNTH-02"
+      }
+    ],
+    "unique_token_count": 2
+  },
+  "backend": "synthetic-events",
+  "camera_zoom_state": {
+    "SYNTH-CAM-01": {
+      "crop": {
+        "bottom": 0.7814128193236716,
+        "label": "software-zoom",
+        "left": 0.14869823956521738,
+        "right": 0.6921765004347826,
+        "score": 1.84,
+        "top": 0.23793455845410638
+      },
+      "motor_hint": {
+        "pan_left_right": -0.22109374999999998,
+        "tilt_up_down": 0.026388888888888906
+      },
+      "pan_error_x": -0.22109374999999998,
+      "pan_error_y": 0.026388888888888906,
+      "reason": "zoom target synthetic-token:SYNTH-01",
+      "target": {
+        "bottom": 0.6541666666666667,
+        "label": "synthetic-token:SYNTH-01",
+        "left": 0.023750000000000104,
+        "right": 0.5340624999999999,
+        "score": 0.1,
+        "top": 0.39861111111111114
+      },
+      "zoom_ratio": 1.84
+    },
+    "SYNTH-CAM-02": {
+      "crop": {
+        "bottom": 0.8267972649572649,
+        "label": "software-zoom",
+        "left": 0.20308592948717952,
+        "right": 0.8441115705128205,
+        "score": 1.56,
+        "top": 0.18577162393162394
+      },
+      "motor_hint": {
+        "pan_left_right": -0.07265624999999998,
+        "tilt_up_down": 0.019444444444444486
+      },
+      "pan_error_x": -0.07265624999999998,
+      "pan_error_y": 0.019444444444444486,
+      "reason": "zoom target synthetic-token:SYNTH-01",
+      "target": {
+        "bottom": 0.6416666666666667,
+        "label": "synthetic-token:SYNTH-01",
+        "left": 0.17937499999999995,
+        "right": 0.6753125000000001,
+        "score": 0.1,
+        "top": 0.39722222222222225
+      },
+      "zoom_ratio": 1.56
+    }
+  },
+  "events": [
+    {
+      "aggregate_count": 1,
+      "camera": "SYNTH-CAM-01",
+      "first_for_token": true,
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "seen_by_cameras": [
+        "SYNTH-CAM-01"
+      ],
+      "sequence": 1,
+      "target": {
+        "bottom": 0.6722222222222222,
+        "label": "synthetic-token:SYNTH-01",
+        "left": 0.0,
+        "right": 0.4246875,
+        "score": 0.1,
+        "top": 0.40555555555555556
+      },
+      "time": "2026-01-01T00:00:00.000Z",
+      "token": "SYNTH-01",
+      "zoom_command": {
+        "crop": {
+          "bottom": 0.901513888888889,
+          "label": "software-zoom",
+          "left": 0.028831249999999975,
+          "right": 0.81008125,
+          "score": 1.28,
+          "top": 0.12026388888888895
+        },
+        "motor_hint": {
+          "pan_left_right": -0.28765625,
+          "tilt_up_down": 0.03888888888888886
+        },
+        "pan_error_x": -0.28765625,
+        "pan_error_y": 0.03888888888888886,
+        "reason": "zoom target synthetic-token:SYNTH-01",
+        "target": {
+          "bottom": 0.6722222222222222,
+          "label": "synthetic-token:SYNTH-01",
+          "left": 0.0,
+          "right": 0.4246875,
+          "score": 0.1,
+          "top": 0.40555555555555556
+        },
+        "zoom_ratio": 1.28
+      }
+    },
+    {
+      "aggregate_count": 1,
+      "camera": "SYNTH-CAM-02",
+      "first_for_token": true,
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "seen_by_cameras": [
+        "SYNTH-CAM-02"
+      ],
+      "sequence": 2,
+      "target": {
+        "bottom": 0.6430555555555555,
+        "label": "synthetic-token:SYNTH-02",
+        "left": 0.4556249999999999,
+        "right": 0.9803125000000001,
+        "score": 0.1,
+        "top": 0.3652777777777778
+      },
+      "time": "2026-01-01T00:00:00.250Z",
+      "token": "SYNTH-02",
+      "zoom_command": {
+        "crop": {
+          "bottom": 0.8917916666666666,
+          "label": "software-zoom",
+          "left": 0.17040624999999998,
+          "right": 0.95165625,
+          "score": 1.28,
+          "top": 0.11054166666666665
+        },
+        "motor_hint": {
+          "pan_left_right": 0.21796875000000004,
+          "tilt_up_down": 0.004166666666666652
+        },
+        "pan_error_x": 0.21796875000000004,
+        "pan_error_y": 0.004166666666666652,
+        "reason": "zoom target synthetic-token:SYNTH-02",
+        "target": {
+          "bottom": 0.6430555555555555,
+          "label": "synthetic-token:SYNTH-02",
+          "left": 0.4556249999999999,
+          "right": 0.9803125000000001,
+          "score": 0.1,
+          "top": 0.3652777777777778
+        },
+        "zoom_ratio": 1.28
+      }
+    },
+    {
+      "aggregate_count": 2,
+      "camera": "SYNTH-CAM-02",
+      "first_for_token": false,
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "seen_by_cameras": [
+        "SYNTH-CAM-01",
+        "SYNTH-CAM-02"
+      ],
+      "sequence": 3,
+      "target": {
+        "bottom": 0.6416666666666667,
+        "label": "synthetic-token:SYNTH-01",
+        "left": 0.17937499999999995,
+        "right": 0.6753125000000001,
+        "score": 0.1,
+        "top": 0.39722222222222225
+      },
+      "time": "2026-01-01T00:00:00.500Z",
+      "token": "SYNTH-01",
+      "zoom_command": {
+        "crop": {
+          "bottom": 0.8267972649572649,
+          "label": "software-zoom",
+          "left": 0.20308592948717952,
+          "right": 0.8441115705128205,
+          "score": 1.56,
+          "top": 0.18577162393162394
+        },
+        "motor_hint": {
+          "pan_left_right": -0.07265624999999998,
+          "tilt_up_down": 0.019444444444444486
+        },
+        "pan_error_x": -0.07265624999999998,
+        "pan_error_y": 0.019444444444444486,
+        "reason": "zoom target synthetic-token:SYNTH-01",
+        "target": {
+          "bottom": 0.6416666666666667,
+          "label": "synthetic-token:SYNTH-01",
+          "left": 0.17937499999999995,
+          "right": 0.6753125000000001,
+          "score": 0.1,
+          "top": 0.39722222222222225
+        },
+        "zoom_ratio": 1.56
+      }
+    },
+    {
+      "aggregate_count": 2,
+      "camera": "SYNTH-CAM-01",
+      "first_for_token": false,
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "seen_by_cameras": [
+        "SYNTH-CAM-01",
+        "SYNTH-CAM-02"
+      ],
+      "sequence": 4,
+      "target": {
+        "bottom": 0.6277777777777778,
+        "label": "synthetic-token:SYNTH-02",
+        "left": 0.3428124999999999,
+        "right": 0.89625,
+        "score": 0.1,
+        "top": 0.338888888888889
+      },
+      "time": "2026-01-01T00:00:00.900Z",
+      "token": "SYNTH-02",
+      "zoom_command": {
+        "crop": {
+          "bottom": 0.823686153846154,
+          "label": "software-zoom",
+          "left": 0.15496442948717948,
+          "right": 0.7959900705128204,
+          "score": 1.56,
+          "top": 0.182660512820513
+        },
+        "motor_hint": {
+          "pan_left_right": 0.11953124999999998,
+          "tilt_up_down": -0.016666666666666607
+        },
+        "pan_error_x": 0.11953124999999998,
+        "pan_error_y": -0.016666666666666607,
+        "reason": "zoom target synthetic-token:SYNTH-02",
+        "target": {
+          "bottom": 0.6277777777777778,
+          "label": "synthetic-token:SYNTH-02",
+          "left": 0.3428124999999999,
+          "right": 0.89625,
+          "score": 0.1,
+          "top": 0.338888888888889
+        },
+        "zoom_ratio": 1.56
+      }
+    },
+    {
+      "aggregate_count": 3,
+      "camera": "SYNTH-CAM-01",
+      "first_for_token": false,
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "seen_by_cameras": [
+        "SYNTH-CAM-01",
+        "SYNTH-CAM-02"
+      ],
+      "sequence": 5,
+      "target": {
+        "bottom": 0.6541666666666667,
+        "label": "synthetic-token:SYNTH-01",
+        "left": 0.023750000000000104,
+        "right": 0.5340624999999999,
+        "score": 0.1,
+        "top": 0.39861111111111114
+      },
+      "time": "2026-01-01T00:00:01.250Z",
+      "token": "SYNTH-01",
+      "zoom_command": {
+        "crop": {
+          "bottom": 0.7814128193236716,
+          "label": "software-zoom",
+          "left": 0.14869823956521738,
+          "right": 0.6921765004347826,
+          "score": 1.84,
+          "top": 0.23793455845410638
+        },
+        "motor_hint": {
+          "pan_left_right": -0.22109374999999998,
+          "tilt_up_down": 0.026388888888888906
+        },
+        "pan_error_x": -0.22109374999999998,
+        "pan_error_y": 0.026388888888888906,
+        "reason": "zoom target synthetic-token:SYNTH-01",
+        "target": {
+          "bottom": 0.6541666666666667,
+          "label": "synthetic-token:SYNTH-01",
+          "left": 0.023750000000000104,
+          "right": 0.5340624999999999,
+          "score": 0.1,
+          "top": 0.39861111111111114
+        },
+        "zoom_ratio": 1.84
+      }
+    }
+  ],
+  "input_kind": "validated-synthetic-event-trace",
+  "notice": "No images were processed and no recognition engine was invoked.",
+  "pipeline": [
+    "strict trace validation",
+    "production plate-to-target geometry",
+    "per-camera production zoom controller",
+    "production cross-camera registry"
+  ],
+  "recognition_accuracy": "not_evaluated",
+  "recognition_performed": false,
+  "schema_version": 1,
+  "trace": {
+    "camera_count": 2,
+    "event_count": 5,
+    "sha256": "1da6eebe4db756e94d9d9a2c47a6c6f3f40aeeb23c72b94b494c895b35cc06f4",
+    "start_time": "2026-01-01T00:00:00.000Z"
+  }
+}

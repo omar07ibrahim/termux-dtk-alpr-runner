@@ -9,6 +9,7 @@ credentials/
 runtime/
 runtime-video/
 runtime-multi/
+.t/
 vendor/arm64/*
 !vendor/arm64/README.md
 arm64/

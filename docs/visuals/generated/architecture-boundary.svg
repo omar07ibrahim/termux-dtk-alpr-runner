@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="430" viewBox="0 0 1120 430" role="img" aria-labelledby="architecture-title architecture-description">
+  <title id="architecture-title">Synthetic evidence architecture boundary</title>
+  <desc id="architecture-description">An explanatory architecture diagram separating the verified synthetic orchestration lane from the unverified external camera and proprietary recognition lane.</desc>
+  <rect width="1120" height="430" rx="18" fill="#08111f"/>
+  <text x="48.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Architecture boundary</text>
+  <text x="48.00" y="78.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffd166" text-anchor="start">ARCHITECTURE — explanatory diagram, not runtime proof</text>
+  <rect x="30" y="110" width="1070" height="142" rx="16" fill="#0d2132" stroke="#355575"/>
+  <rect x="40" y="158" width="190" height="54" rx="10" fill="#14243a" stroke="#58d6a8" stroke-width="2"/>
+  <text x="135.00" y="191.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#e7f0fb" text-anchor="middle">Validated fake events</text>
+  <line x1="238" y1="185" x2="260" y2="185" stroke="#9fb3cc" stroke-width="2"/>
+  <path d="M 255 179 L 265 185 L 255 191" fill="none" stroke="#9fb3cc" stroke-width="2"/>
+  <rect x="270" y="158" width="190" height="54" rx="10" fill="#14243a" stroke="#7aa7ff" stroke-width="2"/>
+  <text x="365.00" y="191.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#e7f0fb" text-anchor="middle">Production geometry</text>
+  <line x1="468" y1="185" x2="490" y2="185" stroke="#9fb3cc" stroke-width="2"/>
+  <path d="M 485 179 L 495 185 L 485 191" fill="none" stroke="#9fb3cc" stroke-width="2"/>
+  <rect x="500" y="158" width="190" height="54" rx="10" fill="#14243a" stroke="#7aa7ff" stroke-width="2"/>
+  <text x="595.00" y="191.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#e7f0fb" text-anchor="middle">Per-camera zoom</text>
+  <line x1="698" y1="185" x2="720" y2="185" stroke="#9fb3cc" stroke-width="2"/>
+  <path d="M 715 179 L 725 185 L 715 191" fill="none" stroke="#9fb3cc" stroke-width="2"/>
+  <rect x="730" y="158" width="190" height="54" rx="10" fill="#14243a" stroke="#7aa7ff" stroke-width="2"/>
+  <text x="825.00" y="191.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#e7f0fb" text-anchor="middle">Shared registry</text>
+  <line x1="928" y1="185" x2="950" y2="185" stroke="#9fb3cc" stroke-width="2"/>
+  <path d="M 945 179 L 955 185 L 945 191" fill="none" stroke="#9fb3cc" stroke-width="2"/>
+  <rect x="960" y="158" width="120" height="54" rx="10" fill="#14243a" stroke="#58d6a8" stroke-width="2"/>
+  <text x="1020.00" y="191.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#e7f0fb" text-anchor="middle">Evidence</text>
+  <text x="45.00" y="294.00" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#58d6a8" text-anchor="start">Verified lane</text>
+  <text x="200.00" y="294.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="400" fill="#dce8f7" text-anchor="start">strict trace → real orchestration modules → deterministic JSON/SVG</text>
+  <line x1="45" y1="318" x2="1075" y2="318" stroke="#31415c"/>
+  <text x="45.00" y="355.00" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#ff8e8e" text-anchor="start">External lane</text>
+  <text x="200.00" y="355.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="400" fill="#dce8f7" text-anchor="start">camera/media → proprietary SDK → recognition results</text>
+  <text x="200.00" y="383.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#ffb4b4" text-anchor="start">Not executed, benchmarked, captured, or claimed by this evidence bundle</text>
+</svg>

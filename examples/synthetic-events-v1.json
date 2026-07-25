@@ -1,0 +1,81 @@
+{
+  "events": [
+    {
+      "box": {
+        "height": 24,
+        "width": 132,
+        "x": 174,
+        "y": 412
+      },
+      "camera": "SYNTH-CAM-01",
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "offset_ms": 0,
+      "token": "SYNTH-01"
+    },
+    {
+      "box": {
+        "height": 25,
+        "width": 146,
+        "x": 846,
+        "y": 388
+      },
+      "camera": "SYNTH-CAM-02",
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "offset_ms": 250,
+      "token": "SYNTH-02"
+    },
+    {
+      "box": {
+        "height": 22,
+        "width": 138,
+        "x": 478,
+        "y": 396
+      },
+      "camera": "SYNTH-CAM-02",
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "offset_ms": 500,
+      "token": "SYNTH-01"
+    },
+    {
+      "box": {
+        "height": 26,
+        "width": 154,
+        "x": 716,
+        "y": 374
+      },
+      "camera": "SYNTH-CAM-01",
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "offset_ms": 900,
+      "token": "SYNTH-02"
+    },
+    {
+      "box": {
+        "height": 23,
+        "width": 142,
+        "x": 286,
+        "y": 402
+      },
+      "camera": "SYNTH-CAM-01",
+      "frame": {
+        "height": 720,
+        "width": 1280
+      },
+      "offset_ms": 1250,
+      "token": "SYNTH-01"
+    }
+  ],
+  "schema_version": 1,
+  "start_unix_ms": 1767225600000
+}

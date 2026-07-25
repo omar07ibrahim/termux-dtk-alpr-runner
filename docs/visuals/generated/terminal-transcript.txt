@@ -1,0 +1,11 @@
+$ python3.12 -S -m alpr_runner.synthetic --trace examples/synthetic-events-v1.json --out PRIVATE-RUNTIME
+ALPR SYNTHETIC EVENT DEMO
+backend=synthetic-events
+recognition_accuracy=not_evaluated
+recognition_performed=false
+input=validated synthetic events (no images)
+events=5 cameras=2 unique_tokens=2
+SYNTH-01 events=3 cameras=SYNTH-CAM-01,SYNTH-CAM-02
+SYNTH-02 events=2 cameras=SYNTH-CAM-01,SYNTH-CAM-02
+artifact=synthetic-result.json
+# exit=0

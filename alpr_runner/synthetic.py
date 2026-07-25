@@ -155,6 +155,21 @@ def default_trace() -> SyntheticTrace:
     return decode_trace(_DEFAULT_TRACE_JSON.encode("ascii"))
 
 
+def canonical_trace_bytes(trace: SyntheticTrace | None = None) -> bytes:
+    """Serialize the public synthetic fixture in one stable byte form."""
+
+    selected = default_trace() if trace is None else trace
+    return (
+        json.dumps(
+            selected.to_json(),
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("ascii")
+
+
 def read_trace(path: str | Path) -> SyntheticTrace:
     """Read one stable regular file through a component-pinned POSIX path."""
 

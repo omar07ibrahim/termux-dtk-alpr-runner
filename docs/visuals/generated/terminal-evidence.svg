@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="455" viewBox="0 0 1120 455" role="img" aria-labelledby="terminal-title terminal-description">
+  <title id="terminal-title">Synthetic-event CLI transcript</title>
+  <desc id="terminal-description">A path-normalized command rendering whose stdout exactly matches the canonical five-event result summary. The command and exit marker are renderer-added; no image recognition is performed.</desc>
+  <rect width="1120" height="455" rx="18" fill="#08111f"/>
+  <rect x="30" y="30" width="1060" height="360" rx="12" fill="#101a2a" stroke="#31415c"/>
+  <circle cx="55" cy="53" r="6" fill="#ff6b6b"/>
+  <circle cx="76" cy="53" r="6" fill="#ffd166"/>
+  <circle cx="97" cy="53" r="6" fill="#5bd68b"/>
+  <text x="550.00" y="58.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#9fb3cc" text-anchor="middle">verified synthetic-event CLI</text>
+  <text x="52.00" y="91.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#8ce99a" text-anchor="start">$ python3.12 -S -m alpr_runner.synthetic --trace examples/synthetic-events-v1.json --out PRIVATE-RUNTIME</text>
+  <text x="52.00" y="116.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">ALPR SYNTHETIC EVENT DEMO</text>
+  <text x="52.00" y="141.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">backend=synthetic-events</text>
+  <text x="52.00" y="166.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">recognition_accuracy=not_evaluated</text>
+  <text x="52.00" y="191.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">recognition_performed=false</text>
+  <text x="52.00" y="216.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">input=validated synthetic events (no images)</text>
+  <text x="52.00" y="241.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">events=5 cameras=2 unique_tokens=2</text>
+  <text x="52.00" y="266.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">SYNTH-01 events=3 cameras=SYNTH-CAM-01,SYNTH-CAM-02</text>
+  <text x="52.00" y="291.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">SYNTH-02 events=2 cameras=SYNTH-CAM-01,SYNTH-CAM-02</text>
+  <text x="52.00" y="316.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start">artifact=synthetic-result.json</text>
+  <text x="52.00" y="341.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" fill="#d9e6f5" text-anchor="start"># exit=0</text>
+  <text x="550.00" y="423.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="600" fill="#86b7ff" text-anchor="middle">Exact stdout · normalized command/exit framing · no recognition engine</text>
+</svg>

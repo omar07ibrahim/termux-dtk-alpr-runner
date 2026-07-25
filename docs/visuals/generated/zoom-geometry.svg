@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="500" viewBox="0 0 1120 500" role="img" aria-labelledby="zoom-geometry-title zoom-geometry-description">
+  <title id="zoom-geometry-title">Runtime-derived zoom geometry</title>
+  <desc id="zoom-geometry-description">Two normalized frame diagrams show the final target and software crop produced for each synthetic camera. No image pixels are used.</desc>
+  <rect width="1120" height="500" rx="18" fill="#08111f"/>
+  <text x="48.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Runtime-derived software zoom geometry</text>
+  <text x="48.00" y="76.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="400" fill="#9fb3cc" text-anchor="start">Normalized frame, selected target, and final crop — geometry only; no pixels</text>
+  <text x="55.00" y="108.00" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#dce8f7" text-anchor="start">SYNTH-CAM-01</text>
+  <rect x="55" y="125" width="470" height="264.375" fill="#101a2a" stroke="#59708f" stroke-width="2"/>
+  <rect x="124.89" y="187.90" width="255.43" height="143.68" fill="#58d6a8" fill-opacity="0.10" stroke="#58d6a8" stroke-width="3"/>
+  <rect x="66.16" y="230.38" width="239.85" height="67.56" fill="#7aa7ff" fill-opacity="0.14" stroke="#7aa7ff" stroke-width="3" stroke-dasharray="8 5"/>
+  <text x="55.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#58d6a8" text-anchor="start">zoom ratio 1.84×</text>
+  <text x="240.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#58d6a8" text-anchor="start">solid = crop</text>
+  <text x="360.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#7aa7ff" text-anchor="start">dashed = target</text>
+  <text x="600.00" y="108.00" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#dce8f7" text-anchor="start">SYNTH-CAM-02</text>
+  <rect x="600" y="125" width="470" height="264.375" fill="#101a2a" stroke="#59708f" stroke-width="2"/>
+  <rect x="695.45" y="174.11" width="301.28" height="169.47" fill="#58d6a8" fill-opacity="0.10" stroke="#58d6a8" stroke-width="3"/>
+  <rect x="684.31" y="230.02" width="233.09" height="64.62" fill="#7aa7ff" fill-opacity="0.14" stroke="#7aa7ff" stroke-width="3" stroke-dasharray="8 5"/>
+  <text x="600.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#58d6a8" text-anchor="start">zoom ratio 1.56×</text>
+  <text x="785.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#58d6a8" text-anchor="start">solid = crop</text>
+  <text x="905.00" y="417.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#7aa7ff" text-anchor="start">dashed = target</text>
+  <text x="560.00" y="467.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#86b7ff" text-anchor="middle">Coordinates and ratios are read from the actual deterministic CLI artifact</text>
+</svg>

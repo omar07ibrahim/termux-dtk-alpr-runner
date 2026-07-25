@@ -50,6 +50,19 @@ memory-safety defect in the SDK can compromise the runner.
 - Runtime directories and vendor directories have dedicated ignore rules.
 - The runner stops when the SDK reports an unlicensed state unless the operator
   explicitly enables the development-only override.
+- The public evidence path accepts only bounded, strictly shaped `SYNTH-*`
+  events, uses no image or recognition backend, and writes its runtime artifact
+  inside a mode-`0700` directory as a mode-`0600` file.
+- The evidence renderer runs the fixed Python 3.12 command twice with a minimal
+  environment, bounded stdout/stderr, a timeout, and original-process-group
+  cleanup under an explicit no-detach command contract. It requires
+  byte-identical results and exact canonical-summary stdout before deriving any
+  visual.
+- Generated evidence has an exact allowlist. Symlinks, special files, and
+  unexpected entries are rejected; inputs are hashed before and after the
+  runs; the private staging root stays pinned by file descriptor; published
+  bytes receive privacy and host-identity scans; accessible inert SVG structure
+  is validated; and the evidence manifest is replaced last.
 
 ## Known gaps
 
@@ -79,6 +92,14 @@ Committed evidence must:
 5. pass an automated scan for host paths, credential forms, and unexpected
    generated files.
 
+The committed synthetic-event bundle satisfies these publication rules for its
+event-level boundary. It contains no media and therefore offers no evidence
+about recognition output, camera behavior, SDK performance, or pixel handling.
+The explanatory architecture and setup diagrams are labeled separately from
+runtime-derived event-flow and geometry artifacts. Terminal evidence is marked
+as a path-normalized rendering of exact stdout rather than a literal screen
+capture.
+
 ## Planned mitigations
 
 - Redacted source descriptors at every log and status boundary.
@@ -87,4 +108,6 @@ Committed evidence must:
 - Bounded, timeout-aware FFmpeg supervision with process-group cleanup.
 - Strict request routing and security headers for the dashboard.
 - Pure-Python contract tests with a fake native adapter.
-- A synthetic fixture/evidence pipeline that never requires proprietary data.
+- A future redistributable synthetic-media pipeline for the image/video
+  boundary. The current event-only evidence pipeline never requires
+  proprietary data but intentionally stops before decoding or recognition.

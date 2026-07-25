@@ -1,0 +1,215 @@
+{
+  "boundary": {
+    "camera_or_media_used": false,
+    "executes": [
+      "one canonical validated synthetic event trace",
+      "production cross-camera aggregation for that trace",
+      "production plate-to-target geometry for that trace",
+      "production per-camera software zoom geometry for that trace",
+      "deterministic evidence rendering for that trace"
+    ],
+    "external_sdk_used": false,
+    "recognition_accuracy": "not_evaluated",
+    "recognition_performed": false,
+    "throughput": "not_measured"
+  },
+  "determinism": {
+    "byte_identical_cli_runs": 2,
+    "fixed_command": [
+      "python3.12",
+      "-S",
+      "-m",
+      "alpr_runner.synthetic",
+      "--trace",
+      "examples/synthetic-events-v1.json",
+      "--out",
+      "PRIVATE-RUNTIME"
+    ],
+    "python_contract": "3.12",
+    "source_hashes_stable_before_and_after": true,
+    "stdout_matches_canonical_summary": true,
+    "transcript_framing": "renderer-added path-normalized command and exit marker"
+  },
+  "generated_tree": [
+    "architecture-boundary.svg",
+    "event-flow.svg",
+    "manifest.sha256.json",
+    "setup-workflow.svg",
+    "synthetic-result.json",
+    "terminal-evidence.svg",
+    "terminal-transcript.txt",
+    "zoom-geometry.svg"
+  ],
+  "inputs": [
+    {
+      "bytes": 948,
+      "path": ".github/workflows/ci.yml",
+      "sha256": "3a276b37c7eb3b9c44d45046abfc585b5a5edd7ef76ea17ce2378068f4d318a1"
+    },
+    {
+      "bytes": 169,
+      "path": ".gitignore",
+      "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
+    },
+    {
+      "bytes": 11543,
+      "path": "README.md",
+      "sha256": "419e86701981e9382942784bc73ce62c88cde73758da83141288ba449362e471"
+    },
+    {
+      "bytes": 60,
+      "path": "alpr_runner/__init__.py",
+      "sha256": "937ae6b14234103bf28cbbf32ebf0a1a3b77363469d363d5c7a0bef7c013a5b5"
+    },
+    {
+      "bytes": 6682,
+      "path": "alpr_runner/aggregation.py",
+      "sha256": "aa4650a57585a9fa97deb71d7fa56cbe183d7fb05bca3eade520be83b2c41d0e"
+    },
+    {
+      "bytes": 12111,
+      "path": "alpr_runner/app.py",
+      "sha256": "8afdf5fc01ec9c0ffd7661f32540c6a41f720374f34734ff7ee2e9160e372885"
+    },
+    {
+      "bytes": 3560,
+      "path": "alpr_runner/car_detector.py",
+      "sha256": "37295abc897c038435da182056795fc2d29ff2cf801b6b2a3d677e52b07da834"
+    },
+    {
+      "bytes": 10380,
+      "path": "alpr_runner/dtk.py",
+      "sha256": "8840037ec3cb9f35357843eb9d0b2f085197c05df2660c971c1434534b0131ed"
+    },
+    {
+      "bytes": 13769,
+      "path": "alpr_runner/ffmpeg_video.py",
+      "sha256": "c6166c47d0456d196e45e1231862401098bf2fcc45447f2753bf256846f17356"
+    },
+    {
+      "bytes": 16476,
+      "path": "alpr_runner/multi_video.py",
+      "sha256": "00e4a2e4b100b8a2ccc964ce18ebafd834926862259dab3581feaa72b51dfcd5"
+    },
+    {
+      "bytes": 12351,
+      "path": "alpr_runner/runtime_io.py",
+      "sha256": "1687591a207606756eafe9d14f72c1f15facb5eaed0c2d3fce91958335372ad1"
+    },
+    {
+      "bytes": 23657,
+      "path": "alpr_runner/synthetic.py",
+      "sha256": "f61500cbe9e26f7361d1d7f1eb5da5f03676032d9bec312c85840515c9215de7"
+    },
+    {
+      "bytes": 14575,
+      "path": "alpr_runner/video.py",
+      "sha256": "8d038dedc779274bb887f84f5cf06a35f6a9095238dc496c186e6acde7e241f1"
+    },
+    {
+      "bytes": 6675,
+      "path": "alpr_runner/zoom.py",
+      "sha256": "5a786b80a6275e46665138faccf52b0044b9239cc0a49a03a5dd552577a6e6cb"
+    },
+    {
+      "bytes": 4395,
+      "path": "docs/charter.md",
+      "sha256": "57da61393f461dbcd797da65f4a99c284f447ac6a84410d6a85c60f3715e1659"
+    },
+    {
+      "bytes": 5337,
+      "path": "docs/threat-model.md",
+      "sha256": "1049206d22743ff2736986eeabd46c57b165bcc02c5d9dda8981eb8417002c19"
+    },
+    {
+      "bytes": 1422,
+      "path": "examples/synthetic-events-v1.json",
+      "sha256": "fcd01504ad72e8356815e128978f00cfc5c3bd68fb802c7ff64f89f3296b1909"
+    },
+    {
+      "bytes": 7830,
+      "path": "tests/test_aggregation.py",
+      "sha256": "9bc1278c18fbb00ad3ba00443d27220f48e03ccb24040e7c51f5f488db43f87a"
+    },
+    {
+      "bytes": 1279,
+      "path": "tests/test_publication_boundary.py",
+      "sha256": "7a7f6f0543e1c41d812210fdc070851c7c7fc320d24bd810eb3274b080bce72a"
+    },
+    {
+      "bytes": 29383,
+      "path": "tests/test_render_readme_visuals.py",
+      "sha256": "ae5ec540df309516ed43a175e2b94c21262b28c3643bfd9563553691550b6abe"
+    },
+    {
+      "bytes": 8004,
+      "path": "tests/test_runtime_io.py",
+      "sha256": "5122049d4ea241ab194afdb24f223cdebf2196feb9a4d17eea601e261d0c087d"
+    },
+    {
+      "bytes": 17385,
+      "path": "tests/test_synthetic.py",
+      "sha256": "505d2f06497842890473ada7b69572e51958fc56983cab403aa2245f0afe496e"
+    },
+    {
+      "bytes": 2620,
+      "path": "tests/test_zoom_vendor_independent.py",
+      "sha256": "3e60dcfa50bf7405d72e681fc461ae4616222462f70c115c55442dce7f90ea0f"
+    },
+    {
+      "bytes": 67825,
+      "path": "tools/render_readme_visuals.py",
+      "sha256": "4620c1d05747d1ce65980360a7053273327b81eb3ca48e128fd05643c171f935"
+    }
+  ],
+  "manifest": {
+    "path": "docs/visuals/generated/manifest.sha256.json",
+    "self_hash": "excluded-by-design",
+    "written_last": true
+  },
+  "outputs": [
+    {
+      "bytes": 4087,
+      "evidence_kind": "architecture-only",
+      "path": "docs/visuals/generated/architecture-boundary.svg",
+      "sha256": "1775d4269aa74fb3d3e68624f9006a9e4e8022f9c535271a5e2025d00c7a5cb5"
+    },
+    {
+      "bytes": 7560,
+      "evidence_kind": "runtime-derived",
+      "path": "docs/visuals/generated/event-flow.svg",
+      "sha256": "2e15e3258e351eaa8a5520b895093629e026a83d658726c439ed8bdbbfc3f6ed"
+    },
+    {
+      "bytes": 5236,
+      "evidence_kind": "workflow-only",
+      "path": "docs/visuals/generated/setup-workflow.svg",
+      "sha256": "0fdd7a356505b1003e14a4ce63aa0d03627eadc32e88188b559e472cfecdf4f0"
+    },
+    {
+      "bytes": 12458,
+      "evidence_kind": "runtime-derived",
+      "path": "docs/visuals/generated/synthetic-result.json",
+      "sha256": "c60808d5f962040bb47b91bb3b7d1e8f2c0effc9f4113e4f2bc615ef71eb6a8c"
+    },
+    {
+      "bytes": 3451,
+      "evidence_kind": "runtime-derived-normalized",
+      "path": "docs/visuals/generated/terminal-evidence.svg",
+      "sha256": "8e706f3735a7871f36b8569c46ead101a53a5570d681502f94e3dd8f7bf0b623"
+    },
+    {
+      "bytes": 443,
+      "evidence_kind": "runtime-derived-normalized",
+      "path": "docs/visuals/generated/terminal-transcript.txt",
+      "sha256": "1a1fa87aa569a23d2a0a76d9b2b38f67f5030e9c8601c0de381c1e8e1906b28b"
+    },
+    {
+      "bytes": 3234,
+      "evidence_kind": "runtime-derived",
+      "path": "docs/visuals/generated/zoom-geometry.svg",
+      "sha256": "445c91a5b6658d0c5a5fe74f7f1dc046dac33a07c9b40217afa096e61e81b432"
+    }
+  ],
+  "schema_version": 1
+}

@@ -27,6 +27,8 @@ jobs:
           python-version: "3.12.3"
           cache: false
       - name: Compile Python sources
-        run: python -m compileall -q alpr_runner tests
+        run: python -m compileall -q alpr_runner tests tools
       - name: Run vendor-independent contracts
         run: python -m unittest discover -s tests -v
+      - name: Verify README evidence is byte-current
+        run: python -S tools/render_readme_visuals.py --check
