@@ -12,6 +12,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
+from .aggregation import PlateRegistry, local_time
 from .dtk import DtkLpr, Plate
 from .runtime_io import (
     atomic_json,
@@ -87,123 +88,6 @@ def build_sources(args: argparse.Namespace) -> list[VideoSource]:
 def sanitize_name(value: str) -> str:
     clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
     return clean.strip("-._")
-
-
-def normalize_plate_text(value: str) -> str:
-    return re.sub(r"[^A-Z0-9]+", "", value.upper())
-
-
-def local_time(timestamp: float | None = None) -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp or time.time()))
-
-
-class PlateRegistry:
-    def __init__(self, print_every: int, print_min_seconds: float) -> None:
-        self.print_every = max(0, print_every)
-        self.print_min_seconds = max(0.0, print_min_seconds)
-        self.lock = threading.RLock()
-        self.entries: dict[str, dict[str, Any]] = {}
-        self.last_event: dict[str, Any] | None = None
-        self.last_print: dict[str, dict[str, float | int]] = {}
-
-    def record(
-        self,
-        camera_id: str,
-        plate: Plate,
-        target: dict[str, Any],
-        zoom: dict[str, Any],
-        frame_size: dict[str, int],
-    ) -> tuple[dict[str, Any] | None, bool]:
-        key = normalize_plate_text(plate.text)
-        if not key:
-            return None, False
-
-        now = time.time()
-        now_text = local_time(now)
-        with self.lock:
-            entry = self.entries.get(key)
-            is_new = entry is None
-            if entry is None:
-                entry = {
-                    "key": key,
-                    "text": plate.text,
-                    "country": plate.country,
-                    "count": 0,
-                    "first_seen": now_text,
-                    "last_seen": now_text,
-                    "last_camera": camera_id,
-                    "cameras": {},
-                    "best_confidence": plate.confidence,
-                    "vehicle_make": plate.vehicle_make,
-                    "vehicle_model": plate.vehicle_model,
-                    "vehicle_confidence": plate.vehicle_confidence,
-                    "last_target": target,
-                    "last_zoom": zoom,
-                    "last_frame_size": frame_size,
-                }
-                self.entries[key] = entry
-
-            entry["count"] += 1
-            entry["last_seen"] = now_text
-            entry["last_camera"] = camera_id
-            entry["cameras"][camera_id] = entry["cameras"].get(camera_id, 0) + 1
-            entry["last_target"] = target
-            entry["last_zoom"] = zoom
-            entry["last_frame_size"] = frame_size
-
-            if plate.confidence >= int(entry.get("best_confidence", 0)):
-                entry["text"] = plate.text
-                entry["country"] = plate.country
-                entry["best_confidence"] = plate.confidence
-                entry["vehicle_make"] = plate.vehicle_make
-                entry["vehicle_model"] = plate.vehicle_model
-                entry["vehicle_confidence"] = plate.vehicle_confidence
-
-            event = {
-                "time": now_text,
-                "camera": camera_id,
-                "key": key,
-                "is_new": is_new,
-                "count": entry["count"],
-                "plate": plate.to_json(),
-                "target": target,
-                "zoom": zoom,
-                "frame_size": frame_size,
-                "cameras": dict(entry["cameras"]),
-            }
-            self.last_event = event
-            should_print = self._should_print_locked(key, int(entry["count"]), now, is_new)
-            if should_print:
-                self.last_print[key] = {"count": int(entry["count"]), "time": now}
-            return event, should_print
-
-    def snapshot(self) -> dict[str, Any]:
-        with self.lock:
-            return self._snapshot_locked()
-
-    def _snapshot_locked(self) -> dict[str, Any]:
-        plates = sorted(
-            (dict(entry, cameras=dict(entry["cameras"])) for entry in self.entries.values()),
-            key=lambda item: (-int(item["count"]), str(item["key"])),
-        )
-        return {
-            "total_unique_plates": len(plates),
-            "total_recognitions": sum(int(item["count"]) for item in plates),
-            "last_event": dict(self.last_event) if self.last_event else None,
-            "plates": plates,
-        }
-
-    def _should_print_locked(self, key: str, count: int, now: float, is_new: bool) -> bool:
-        if is_new:
-            return True
-        if self.print_every > 0 and count % self.print_every == 0:
-            return True
-        previous = self.last_print.get(key)
-        return bool(
-            previous
-            and self.print_min_seconds > 0
-            and now - float(previous["time"]) >= self.print_min_seconds
-        )
 
 
 class StreamWorker:

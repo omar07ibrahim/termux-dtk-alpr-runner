@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Iterable
-
-from PIL import Image
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 
 from .dtk import Plate
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 @dataclass
@@ -37,7 +39,7 @@ class Box:
     def center_y(self) -> float:
         return (self.top + self.bottom) * 0.5
 
-    def clamp(self) -> "Box":
+    def clamp(self) -> Box:
         return Box(
             left=min(max(self.left, 0.0), 1.0),
             top=min(max(self.top, 0.0), 1.0),
@@ -138,7 +140,18 @@ class ZoomController:
             pan_error_y=(target_center_y - 0.5) if target else 0.0,
         )
 
-    def crop_image(self, image: Image.Image, command: ZoomCommand) -> Image.Image:
+    def crop_image(
+        self,
+        image: Image.Image,
+        command: ZoomCommand,
+    ) -> Image.Image:
+        try:
+            from PIL import Image
+        except ImportError as error:
+            raise RuntimeError(
+                "Pillow is required only when cropping an image"
+            ) from error
+
         crop = command.crop
         left = int(crop.left * image.width)
         top = int(crop.top * image.height)

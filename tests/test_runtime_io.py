@@ -6,6 +6,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from alpr_runner.runtime_io import (
     MAX_RUNTIME_RECORD_BYTES,
@@ -44,8 +45,31 @@ class PrivateDirectoryTests(unittest.TestCase):
             linked = root / "linked"
             linked.symlink_to(real, target_is_directory=True)
 
-            with self.assertRaisesRegex(RuntimeStorageError, "not a link"):
+            with self.assertRaisesRegex(RuntimeStorageError, "cannot prepare"):
                 prepare_private_directory(linked)
+
+    def test_symlinked_ancestor_is_rejected_without_creating_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real = root / "real"
+            real.mkdir()
+            linked = root / "linked"
+            linked.symlink_to(real, target_is_directory=True)
+
+            with self.assertRaisesRegex(RuntimeStorageError, "cannot prepare"):
+                prepare_private_directory(linked / "runtime")
+
+            self.assertFalse((real / "runtime").exists())
+
+    def test_filesystem_errors_are_normalized_without_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            blocker = Path(temporary) / "private-name.txt"
+            blocker.write_text("not a directory", encoding="utf-8")
+
+            with self.assertRaises(RuntimeStorageError) as raised:
+                prepare_private_directory(blocker / "child")
+
+            self.assertNotIn(str(blocker), str(raised.exception))
 
 
 class AtomicRuntimeRecordTests(unittest.TestCase):
@@ -94,6 +118,35 @@ class AtomicRuntimeRecordTests(unittest.TestCase):
                 atomic_json(path, {"payload": "x" * MAX_RUNTIME_RECORD_BYTES})
 
             self.assertFalse(path.exists())
+
+    def test_parent_replacement_is_detected_after_pinned_write(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = prepare_private_directory(root / "runtime")
+            moved = root / "runtime-original"
+            real_write = os.write
+            replaced = False
+
+            def replacing_write(descriptor: int, payload: bytes) -> int:
+                nonlocal replaced
+                count = real_write(descriptor, payload)
+                if not replaced:
+                    replaced = True
+                    os.replace(output, moved)
+                    output.mkdir(mode=0o700)
+                return count
+
+            with (
+                mock.patch(
+                    "alpr_runner.runtime_io.os.write",
+                    side_effect=replacing_write,
+                ),
+                self.assertRaisesRegex(RuntimeStorageError, "changed"),
+            ):
+                atomic_json(output / "status.json", {"safe": True})
+
+            self.assertFalse((output / "status.json").exists())
+            self.assertTrue((moved / "status.json").is_file())
 
 
 class PublicationBoundaryTests(unittest.TestCase):
