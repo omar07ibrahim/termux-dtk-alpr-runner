@@ -41,6 +41,12 @@ memory-safety defect in the SDK can compromise the runner.
 - Proprietary SDK and activation files are ignored rather than committed.
 - The dashboard binds to numeric loopback by default.
 - Subprocesses use argument arrays instead of shell interpolation.
+- Runtime directory leaves are non-symlink directories tightened to mode
+  `0700`; JSON replacement rejects symlink and special-file destinations and
+  writes mode `0600` files atomically.
+- Saved runtime images and generated HTML are tightened to mode `0600`.
+- Status records use source-kind descriptors instead of camera URLs or host
+  paths, and the still-image runner no longer prints the SDK system ID.
 - Runtime directories and vendor directories have dedicated ignore rules.
 - The runner stops when the SDK reports an unlicensed state unless the operator
   explicitly enables the development-only override.
@@ -48,8 +54,8 @@ memory-safety defect in the SDK can compromise the runner.
 ## Known gaps
 
 - Camera URLs are command-line arguments and may appear in process listings.
-- Some runtime status records include full source strings and recognition data.
-- Runtime files do not yet enforce private directory and file modes.
+- FFmpeg diagnostics are not yet scrubbed and may repeat its input URL.
+- Runtime status records and images still contain recognition data.
 - The dashboard has no authentication, authorization, TLS, CSRF defense,
   retention control, or response-security headers.
 - FFmpeg and native SDK stderr are not consistently bounded or sanitized.

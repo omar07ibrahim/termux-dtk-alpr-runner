@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import json
 import os
 import signal
 import subprocess
@@ -15,7 +14,14 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 from .dtk import DtkLpr, Plate
-from .video import DtkVideoLibrary, PIXFMT_RGB24, atomic_json
+from .runtime_io import (
+    atomic_json,
+    prepare_private_directory,
+    private_relative_path,
+    protect_runtime_file,
+    source_descriptor,
+)
+from .video import PIXFMT_RGB24, DtkVideoLibrary
 from .zoom import ZoomController, plate_to_target
 
 
@@ -46,8 +52,7 @@ def parse_args() -> argparse.Namespace:
 class FfmpegVideoAlprRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.out_dir = Path(args.out).expanduser().resolve()
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = prepare_private_directory(args.out)
         self.dtk_dir = Path(args.dtk_dir).expanduser().resolve()
         os.chdir(self.dtk_dir)
 
@@ -92,13 +97,13 @@ class FfmpegVideoAlprRunner:
         print(f"DTK version: {self.lpr.version()}")
         print("RTSP capture: ffmpeg rawvideo -> DTK VideoFrame_CreateFromImageBuffer")
         command = self._ffmpeg_command()
-        print("FFmpeg input:", self.args.rtsp)
+        print("FFmpeg input: <redacted RTSP source>")
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
-            preexec_fn=os.setsid if hasattr(os, "setsid") else None,
+            start_new_session=os.name == "posix",
         )
         stderr_thread = threading.Thread(target=self._drain_stderr, args=(process,), daemon=True)
         stderr_thread.start()
@@ -130,7 +135,7 @@ class FfmpegVideoAlprRunner:
                     status = {
                         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "mode": "ffmpeg-video",
-                        "source": self.args.rtsp,
+                        "source": source_descriptor("rtsp", self.args.rtsp),
                         "frames_seen": frames,
                         "frames_completed": completed,
                         "frames_dropped": dropped,
@@ -250,6 +255,7 @@ class FfmpegVideoAlprRunner:
             preview_path = self._save_annotated(image, self.out_dir / "latest.jpg", plate=plate, target=target)
             zoomed = self.zoom.crop_image(image, command)
             zoomed.save(self.out_dir / "latest_zoom.jpg", quality=88)
+            protect_runtime_file(self.out_dir / "latest_zoom.jpg")
             zoom_path = self.out_dir / "latest_zoom.jpg"
 
         status = {
@@ -258,8 +264,16 @@ class FfmpegVideoAlprRunner:
                 "plate": plate.to_json(),
                 "target": target.to_json(),
                 "zoom": command.to_json(),
-                "latest_preview": str(preview_path) if preview_path else None,
-                "latest_zoom_preview": str(zoom_path) if zoom_path else None,
+                "latest_preview": (
+                    private_relative_path(preview_path, self.out_dir)
+                    if preview_path
+                    else None
+                ),
+                "latest_zoom_preview": (
+                    private_relative_path(zoom_path, self.out_dir)
+                    if zoom_path
+                    else None
+                ),
             }
         }
         with self.lock:
@@ -271,6 +285,7 @@ class FfmpegVideoAlprRunner:
     def _save_raw_frame(self, data: bytes, path: Path) -> None:
         image = Image.frombytes("RGB", (self.args.width, self.args.height), data)
         image.save(path, quality=85)
+        protect_runtime_file(path)
 
     def _save_annotated(self, image: Image.Image, path: Path, plate: Plate, target: Any) -> Path:
         result = image.copy()
@@ -292,6 +307,7 @@ class FfmpegVideoAlprRunner:
             width=4,
         )
         result.save(path, quality=88)
+        protect_runtime_file(path)
         return path
 
     @staticmethod
@@ -325,7 +341,7 @@ class FfmpegVideoAlprRunner:
             else:
                 process.terminate()
             process.wait(timeout=2)
-        except Exception:
+        except (OSError, subprocess.TimeoutExpired):
             process.kill()
 
 

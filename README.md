@@ -227,10 +227,13 @@ separate throughput from recognition quality.
 
 License plates, camera URLs, frames, timestamps, device identifiers, and
 vehicle metadata can be sensitive. The current implementation writes raw
-runtime JSON and preview images and does not provide retention, encryption,
-authentication, or redaction controls. Use only footage you are authorized to
-process, keep the output directory private, and do not expose the loopback
-dashboard through a reverse proxy or port-forward.
+runtime JSON and preview images. Runtime directories are tightened to mode
+`0700`; JSON, HTML, and image artifacts are written or tightened to mode
+`0600`; source paths and RTSP authorities are excluded from status records.
+These controls do not provide retention, encryption, authentication, or plate
+redaction. Use only footage you are authorized to process, keep the output
+directory private, and do not expose the loopback dashboard through a reverse
+proxy or port-forward.
 
 `127.0.0.1` binding limits the default dashboard listener to the local network
 namespace; it is not an authentication or authorization mechanism. Review

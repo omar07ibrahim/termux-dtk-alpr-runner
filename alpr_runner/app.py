@@ -8,13 +8,20 @@ import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageDraw
 
 from .car_detector import OptionalYoloCarDetector
-from .dtk import DtkLpr, DtkError, DtkLicenseError
+from .dtk import DtkError, DtkLicenseError, DtkLpr
+from .runtime_io import (
+    atomic_json,
+    atomic_text,
+    prepare_private_directory,
+    protect_runtime_file,
+    source_descriptor,
+)
 from .zoom import Box, ZoomController, plate_to_target
 
 
@@ -89,7 +96,13 @@ class FrameSource:
             "1",
             str(path),
         ]
-        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
         if result.returncode != 0:
             return None
         return path
@@ -162,7 +175,8 @@ def start_server(out_dir: Path, port: int, control: ControlState) -> ThreadingHT
 
 
 def write_index(out_dir: Path) -> None:
-    (out_dir / "index.html").write_text(
+    atomic_text(
+        out_dir / "index.html",
         """<!doctype html>
 <html>
 <head>
@@ -213,7 +227,6 @@ setInterval(tick, 800); tick();
 </body>
 </html>
 """,
-        encoding="utf-8",
     )
 
 
@@ -244,16 +257,9 @@ def annotate(image: Image.Image, plates, targets: list[Box], command) -> Image.I
     return result
 
 
-def atomic_json(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
-
-
 def run() -> int:
     args = parse_args()
-    out_dir = Path(args.out).expanduser().resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = prepare_private_directory(args.out)
     control = ControlState()
     server = start_server(out_dir, args.serve, control)
     if server:
@@ -281,7 +287,6 @@ def run() -> int:
 
     with dtk:
         print(f"DTK version: {dtk.version()}")
-        print(f"DTK system id: {dtk.system_id()}")
         while True:
             frame_path = source.next_frame()
             if frame_path is None:
@@ -305,10 +310,12 @@ def run() -> int:
             annotated = annotate(image, plates, targets, command)
 
             annotated.save(out_dir / "latest.jpg", quality=90)
+            protect_runtime_file(out_dir / "latest.jpg")
             zoomed.save(out_dir / "latest_zoom.jpg", quality=90)
+            protect_runtime_file(out_dir / "latest_zoom.jpg")
             status = {
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "source": str(frame_path),
+                "source": source_descriptor(args.source, args.input),
                 "dtk_processing_ms": processing_ms,
                 "loop_ms": int((time.time() - started) * 1000),
                 "control": control.snapshot(),

@@ -13,7 +13,14 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 from .dtk import DtkLpr, Plate
-from .video import DtkVideoLibrary, ERR_CAPTURE_EOF, PIXFMT_RGB24, atomic_json
+from .runtime_io import (
+    atomic_json,
+    prepare_private_directory,
+    private_relative_path,
+    protect_runtime_file,
+    source_descriptor,
+)
+from .video import ERR_CAPTURE_EOF, PIXFMT_RGB24, DtkVideoLibrary
 from .zoom import ZoomController, plate_to_target
 
 
@@ -54,7 +61,7 @@ class VideoSource:
     value: str | int
 
     def to_json(self) -> dict[str, Any]:
-        return {"name": self.name, "kind": self.kind, "value": self.value}
+        return {"name": self.name, **source_descriptor(self.kind, self.value)}
 
 
 def build_sources(args: argparse.Namespace) -> list[VideoSource]:
@@ -192,9 +199,11 @@ class PlateRegistry:
         if self.print_every > 0 and count % self.print_every == 0:
             return True
         previous = self.last_print.get(key)
-        if previous and self.print_min_seconds > 0 and now - float(previous["time"]) >= self.print_min_seconds:
-            return True
-        return False
+        return bool(
+            previous
+            and self.print_min_seconds > 0
+            and now - float(previous["time"]) >= self.print_min_seconds
+        )
 
 
 class StreamWorker:
@@ -213,8 +222,7 @@ class StreamWorker:
         self.registry = registry
         self.stop_event = stop_event
         self.done_event = threading.Event()
-        self.out_dir = root_out_dir / source.name
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = prepare_private_directory(root_out_dir / source.name)
         self.zoom = ZoomController(max_zoom=args.max_zoom)
         self.lock = threading.Lock()
         self.frame_count = 0
@@ -367,9 +375,15 @@ class StreamWorker:
             preview_path = self._save_frame(frame, self.out_dir / "latest.jpg", plate=plate, target=target)
             zoom_path = self._save_zoom(frame, self.out_dir / "latest_zoom.jpg", command)
             if preview_path:
-                event["latest_preview"] = str(preview_path)
+                event["latest_preview"] = private_relative_path(
+                    preview_path,
+                    self.out_dir,
+                )
             if zoom_path:
-                event["latest_zoom_preview"] = str(zoom_path)
+                event["latest_zoom_preview"] = private_relative_path(
+                    zoom_path,
+                    self.out_dir,
+                )
             atomic_json(self.out_dir / "plate_event.json", event)
 
         if should_print:
@@ -433,6 +447,7 @@ class StreamWorker:
             )
             draw.text((plate.x, max(0, plate.y - 16)), f"{plate.text} {plate.confidence}", fill=(255, 255, 255))
         image.save(path, quality=88)
+        protect_runtime_file(path)
         return path
 
     def _save_zoom(self, frame: ctypes.c_void_p, path: Path, command: Any) -> Path | None:
@@ -441,14 +456,14 @@ class StreamWorker:
             return None
         zoomed = self.zoom.crop_image(image, command)
         zoomed.save(path, quality=88)
+        protect_runtime_file(path)
         return path
 
 
 class MultiVideoAlprRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.out_dir = Path(args.out).expanduser().resolve()
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = prepare_private_directory(args.out)
         self.dtk_dir = Path(args.dtk_dir).expanduser().resolve()
         args.dtk_dir = str(self.dtk_dir)
         os.chdir(self.dtk_dir)
@@ -491,7 +506,7 @@ class MultiVideoAlprRunner:
         status = {
             "time": local_time(),
             "mode": "dtk-video-multi",
-            "dtk_dir": str(self.dtk_dir),
+            "sdk": {"kind": "external-linux-arm64"},
             "streams_count": len(self.workers),
             "streams": [worker.status(started) for worker in self.workers],
             "plates": plates,

@@ -18,6 +18,7 @@ model.
 - A multi-camera worker model with per-camera recognition engines.
 - Cross-camera plate aggregation and software zoom targeting.
 - Loopback-only status dashboard and JSON/image runtime outputs.
+- Private-mode runtime directories and files with redacted source descriptors.
 - Termux/proot setup and launch scripts.
 
 ## Required external components

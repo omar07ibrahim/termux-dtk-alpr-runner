@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import json
 import os
 import threading
 import time
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw
 
 from .dtk import DtkLpr, Plate
+from .runtime_io import (
+    atomic_json,
+    prepare_private_directory,
+    protect_runtime_file,
+)
 from .zoom import ZoomController, plate_to_target
-
 
 PIXFMT_RGB24 = 2
 ERR_CAPTURE_EOF = 3
@@ -110,8 +112,7 @@ class DtkVideoLibrary:
 class VideoAlprRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.out_dir = Path(args.out).expanduser().resolve()
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = prepare_private_directory(args.out)
         self.dtk_dir = Path(args.dtk_dir).expanduser().resolve()
         os.chdir(self.dtk_dir)
 
@@ -323,6 +324,7 @@ class VideoAlprRunner:
             )
             draw.text((plate.x, max(0, plate.y - 16)), f"{plate.text} {plate.confidence}", fill=(255, 255, 255))
         image.save(path, quality=88)
+        protect_runtime_file(path)
         return path
 
     def _save_zoom(self, frame: ctypes.c_void_p, path: Path, command) -> Path | None:
@@ -331,13 +333,8 @@ class VideoAlprRunner:
             return None
         zoomed = self.zoom.crop_image(image, command)
         zoomed.save(path, quality=88)
+        protect_runtime_file(path)
         return path
-
-
-def atomic_json(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
 
 
 def main() -> int:
