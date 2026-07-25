@@ -1,13 +1,25 @@
 # Termux DTK ALPR Runner
 
-This runner is for the DTK **Linux ARM64** package from `/Users/omar.ibrahim/Downloads/arm64`.
-Those files are glibc Linux AArch64 binaries, so the correct phone path is:
+This repository is an experimental edge-vision integration for running the
+proprietary DTK **Linux ARM64** SDK inside a Termux-managed Ubuntu environment.
+The SDK files and license are deliberately not part of this repository. Place
+an official ARM64 SDK distribution in the ignored `vendor/arm64/` directory.
+
+Those files are glibc Linux AArch64 binaries, so the intended phone path is:
 
 ```text
 Termux -> proot-distro Ubuntu -> Python -> libDTKLPR.so
 ```
 
 It is not an Android APK and it is not trying to load Linux `.so` files through Android JNI.
+
+> **Current boundary:** the Python orchestration, multi-camera aggregation,
+> frame handoff, and software zoom code are present. A complete run additionally
+> requires a separately licensed SDK, compatible ARM64 hardware, FFmpeg, and a
+> camera source. The repository does not currently publish a reproducible
+> end-to-end benchmark or independently verifiable recognition-accuracy result.
+> See the [project charter](docs/charter.md) and
+> [threat model](docs/threat-model.md).
 
 ## What It Does
 
@@ -170,8 +182,14 @@ bash ~/dtk-alpr/app/termux/activate_license.sh setactcode YOUR_ACTIVATION_CODE
 For RTSP camera:
 
 ```bash
-bash ubuntu/run_video.sh --rtsp rtsp://user:pass@host:554/stream1 --preview-every 0
+bash ubuntu/run_video.sh --rtsp rtsp://camera.invalid/stream1 --preview-every 0
 ```
+
+Do not put camera usernames or passwords directly in a command-line URL. They
+can be exposed through shell history, process listings, logs, and runtime
+status files. The current runner has no secret-provider integration; use only
+credential-free local or otherwise isolated streams until that boundary is
+implemented.
 
 For the companion Android APK local stream:
 
@@ -189,26 +207,40 @@ For three video streams:
 
 ```bash
 bash ubuntu/run_multi_video.sh \
-  --rtsp rtsp://user:pass@host1:554/stream1 \
-  --rtsp rtsp://user:pass@host2:554/stream1 \
-  --rtsp rtsp://user:pass@host3:554/stream1 \
+  --rtsp rtsp://camera1.invalid/stream1 \
+  --rtsp rtsp://camera2.invalid/stream1 \
+  --rtsp rtsp://camera3.invalid/stream1 \
   --threads 1 \
   --preview-every 0
 ```
 
-## Verified On This Mac Through ARM64 Linux
+## Evidence status
 
-The included ARM64 Linux runtime was smoke-tested in an ARM64 Ubuntu container:
+Earlier development runs exercised the proprietary SDK with still images and a
+video stream. Their media, license state, host environment, and raw detections
+are not committed, so those observations are not presented as reproducible
+portfolio evidence. Future published evidence must use redistributable
+synthetic media, record the exact runner and environment contract, and clearly
+separate throughput from recognition quality.
 
-```text
-DTK version: 6.0.1
-sample1.jpg -> GK-3713, FV-2382, zoom=1.28
-sample2.jpg -> JC-6294, zoom=1.28
-sample.mp4 -> DTKVID consumed 412/414 frames at about 25 FPS
-```
+## Privacy and deployment safety
 
-That proves the runner loads `libDTKLPR.so` and uses the ARM64 DTK engine, not the Windows DLL.
+License plates, camera URLs, frames, timestamps, device identifiers, and
+vehicle metadata can be sensitive. The current implementation writes raw
+runtime JSON and preview images and does not provide retention, encryption,
+authentication, or redaction controls. Use only footage you are authorized to
+process, keep the output directory private, and do not expose the loopback
+dashboard through a reverse proxy or port-forward.
+
+`127.0.0.1` binding limits the default dashboard listener to the local network
+namespace; it is not an authentication or authorization mechanism. Review
+[`docs/threat-model.md`](docs/threat-model.md) before using any non-synthetic
+camera source.
 
 ## License
 
-The runner does not patch or bypass DTK licensing. If `LPREngine_IsLicensed()` returns an error, the program reports it and stops.
+No DTK binaries, models, activation material, or license rights are distributed
+here. The runner does not patch or bypass DTK licensing. If
+`LPREngine_IsLicensed()` returns an error, the program reports it and stops.
+The repository itself does not yet declare an open-source license; treat the
+source as all-rights-reserved until an explicit license file is added.
