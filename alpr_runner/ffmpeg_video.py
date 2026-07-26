@@ -7,11 +7,8 @@ import signal
 import subprocess
 import threading
 import time
-from collections import deque
 from pathlib import Path
 from typing import Any
-
-from PIL import Image, ImageDraw
 
 from .dtk import DtkLpr, Plate
 from .runtime_io import (
@@ -21,8 +18,108 @@ from .runtime_io import (
     protect_runtime_file,
     source_descriptor,
 )
-from .video import PIXFMT_RGB24, DtkVideoLibrary
 from .zoom import ZoomController, plate_to_target
+
+
+class FrameLeasePool:
+    """Bounded, thread-safe ownership for buffers exposed to native code.
+
+    A successful :meth:`try_acquire` keeps the exact ``ctypes`` array strongly
+    referenced until the adapter acknowledges that frame ID. The pool never
+    evicts an in-flight lease: when capacity is exhausted, ``try_acquire``
+    returns ``False`` and the caller must not hand that buffer to native code.
+
+    ``acknowledge`` and ``cancel`` remove only the matching frame ID. Unknown,
+    duplicate, and out-of-order acknowledgements are deterministic no-ops.
+    ``cancel`` is reserved for paths where native ownership was never accepted.
+    Call ``close`` only after the native adapter has been stopped and cannot
+    access previously handed-off addresses.
+    """
+
+    def __init__(self, capacity: int) -> None:
+        if type(capacity) is not int:
+            raise TypeError("capacity must be an int")
+        if capacity <= 0:
+            raise ValueError("capacity must be greater than zero")
+
+        self._capacity = capacity
+        self._leases: dict[int, ctypes.Array] = {}
+        self._closed = False
+        self._lock = threading.Lock()
+
+    @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    @property
+    def active_ids(self) -> tuple[int, ...]:
+        """Return an immutable insertion-ordered snapshot for diagnostics."""
+
+        with self._lock:
+            return tuple(self._leases)
+
+    @property
+    def closed(self) -> bool:
+        with self._lock:
+            return self._closed
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._leases)
+
+    def try_acquire(self, frame_id: int, buffer: ctypes.Array) -> bool:
+        """Lease ``buffer`` to ``frame_id`` without blocking or eviction."""
+
+        self._validate_frame_id(frame_id, require_positive=True)
+        if not isinstance(buffer, ctypes.Array):
+            raise TypeError("buffer must be a ctypes array")
+
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("frame lease pool is closed")
+            if frame_id in self._leases:
+                raise ValueError(f"frame_id {frame_id} already has an active lease")
+            if len(self._leases) >= self._capacity:
+                return False
+            self._leases[frame_id] = buffer
+            return True
+
+    def acknowledge(self, frame_id: int) -> bool:
+        """Release one matching completed lease; return ``False`` if absent."""
+
+        self._validate_frame_id(frame_id)
+        return self._release(frame_id)
+
+    def cancel(self, frame_id: int) -> bool:
+        """Release a lease whose native handoff failed or was rejected."""
+
+        self._validate_frame_id(frame_id)
+        return self._release(frame_id)
+
+    def close(self) -> int:
+        """Release every lease after adapter shutdown and reject future work."""
+
+        with self._lock:
+            if self._closed:
+                return 0
+            released = len(self._leases)
+            self._leases.clear()
+            self._closed = True
+            return released
+
+    def _release(self, frame_id: int) -> bool:
+        with self._lock:
+            if frame_id not in self._leases:
+                return False
+            del self._leases[frame_id]
+            return True
+
+    @staticmethod
+    def _validate_frame_id(frame_id: int, *, require_positive: bool = False) -> None:
+        if type(frame_id) is not int:
+            raise TypeError("frame_id must be an int")
+        if require_positive and frame_id <= 0:
+            raise ValueError("frame_id must be greater than zero")
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,12 +148,17 @@ def parse_args() -> argparse.Namespace:
 
 class FfmpegVideoAlprRunner:
     def __init__(self, args: argparse.Namespace) -> None:
+        # Keep the pure-Python orchestration and lease contract importable
+        # without loading the optional DTK video/Pillow runtime.
+        from .video import PIXFMT_RGB24, DtkVideoLibrary
+
         self.args = args
         self.out_dir = prepare_private_directory(args.out)
         self.dtk_dir = Path(args.dtk_dir).expanduser().resolve()
         os.chdir(self.dtk_dir)
 
         self.video_lib = DtkVideoLibrary(self.dtk_dir)
+        self.pixel_format = PIXFMT_RGB24
         self.zoom = ZoomController(max_zoom=args.max_zoom)
         self.stop_event = threading.Event()
         self.lock = threading.RLock()
@@ -65,8 +167,7 @@ class FfmpegVideoAlprRunner:
         self.completed_count = 0
         self.dropped_count = 0
         self.last_status: dict[str, Any] = {}
-        self.buffer_refs: dict[int, ctypes.Array] = {}
-        self.buffer_order: deque[int] = deque(maxlen=max(8, args.buffer_retain))
+        self.frame_leases = FrameLeasePool(max(8, args.buffer_retain))
         self.latest_frame_bytes: bytes | None = None
 
         self.plate_callback = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(
@@ -158,9 +259,18 @@ class FfmpegVideoAlprRunner:
             pass
         finally:
             self.stop_event.set()
-            self._stop_process(process)
-            self.lpr.close()
+            self._shutdown(process)
         return 0
+
+    def _shutdown(self, process: subprocess.Popen) -> None:
+        """Stop producers, destroy the adapter, then release backing buffers."""
+
+        self._stop_process(process)
+        self.lpr.close()
+        # LPREngine_Destroy has returned, so this runner treats the adapter
+        # as quiesced before clearing outstanding leases. If producer stop or
+        # destruction raises, this line is deliberately not reached.
+        self.frame_leases.close()
 
     def _ffmpeg_command(self) -> list[str]:
         vf = f"fps={self.args.fps},scale={self.args.width}:{self.args.height}:flags=fast_bilinear"
@@ -198,44 +308,76 @@ class FfmpegVideoAlprRunner:
             self.latest_frame_bytes = data
 
         buffer = ctypes.create_string_buffer(data)
-        with self.lock:
-            self.buffer_refs[frame_id] = buffer
-            self.buffer_order.append(frame_id)
-            while len(self.buffer_refs) > self.buffer_order.maxlen:
-                old = self.buffer_order.popleft()
-                self.buffer_refs.pop(old, None)
-
-        frame = self.video_lib.lib.VideoFrame_CreateFromImageBuffer(
-            ctypes.cast(buffer, ctypes.c_void_p),
-            self.args.width,
-            self.args.height,
-            self.args.width * 3,
-            PIXFMT_RGB24,
-            frame_id,
-        )
-        if not frame:
+        if not self.frame_leases.try_acquire(frame_id, buffer):
+            # Backpressure is a dropped input frame, not permission to evict a
+            # buffer that the native adapter may still be reading.
             with self.lock:
-                self.buffer_refs.pop(frame_id, None)
+                self.dropped_count += 1
+            return
+
+        try:
+            frame = self.video_lib.lib.VideoFrame_CreateFromImageBuffer(
+                ctypes.cast(buffer, ctypes.c_void_p),
+                self.args.width,
+                self.args.height,
+                self.args.width * 3,
+                self.pixel_format,
+                frame_id,
+            )
+        except BaseException:
+            # An exception crossing native code does not prove whether it kept
+            # the address. Retain the lease until adapter destruction.
+            raise
+        if not frame:
+            self.frame_leases.cancel(frame_id)
             return
 
         if self.args.preview_every > 0 and frame_id % self.args.preview_every == 0:
-            self._save_raw_frame(data, self.out_dir / "latest_frame.jpg")
+            try:
+                self._save_raw_frame(data, self.out_dir / "latest_frame.jpg")
+            except BaseException:
+                # This frame is definitely not submitted. Even here, release
+                # the lease only after native release confirms success.
+                self._release_unaccepted_frame(frame, frame_id)
+                raise
 
-        ret = self.lpr.lib.LPREngine_PutFrame(self.lpr.engine, frame, frame_id)
+        try:
+            ret = self.lpr.lib.LPREngine_PutFrame(self.lpr.engine, frame, frame_id)
+        except BaseException:
+            # The call may have accepted ownership before the exception crossed
+            # the boundary. Do not release either the frame or its backing data.
+            raise
         if ret != 0:
-            self.video_lib.lib.VideoFrame_Release(frame)
-            with self.lock:
-                self.dropped_count += 1
-                self.buffer_refs.pop(frame_id, None)
-            print(f"LPREngine_PutFrame returned {ret}")
+            try:
+                release_status = self._release_unaccepted_frame(frame, frame_id)
+            finally:
+                with self.lock:
+                    self.dropped_count += 1
+            release_suffix = (
+                ""
+                if release_status == 0
+                else f"; VideoFrame_Release returned {release_status}, lease retained"
+            )
+            print(f"LPREngine_PutFrame returned {ret}{release_suffix}")
+
+    def _release_unaccepted_frame(self, frame: Any, frame_id: int) -> int:
+        """Release a definitely unsubmitted frame without failing open."""
+
+        release_status = int(self.video_lib.lib.VideoFrame_Release(frame))
+        if release_status == 0:
+            self.frame_leases.cancel(frame_id)
+        return release_status
 
     def _on_frame_completed(self, _engine: ctypes.c_void_p, frame: ctypes.c_void_p, status: int) -> None:
         frame_id = int(self.video_lib.lib.VideoFrame_Timestamp(frame))
+        if not self.frame_leases.acknowledge(frame_id):
+            # Duplicate, unknown, or late-after-close callbacks must not alter
+            # counters or release any other frame's backing storage.
+            return
         with self.lock:
             self.completed_count += 1
             if status != 0:
                 self.dropped_count += 1
-            self.buffer_refs.pop(frame_id, None)
 
     def _on_plate_detected(self, _engine: ctypes.c_void_p, frame: ctypes.c_void_p, plate_handle: ctypes.c_void_p) -> None:
         plate = self.lpr._extract_plate(plate_handle)
@@ -251,6 +393,12 @@ class FfmpegVideoAlprRunner:
         preview_path = None
         zoom_path = None
         if latest:
+            try:
+                from PIL import Image
+            except ModuleNotFoundError as error:
+                raise RuntimeError(
+                    "Pillow is required only when writing frame previews"
+                ) from error
             image = Image.frombytes("RGB", (self.args.width, self.args.height), latest)
             preview_path = self._save_annotated(image, self.out_dir / "latest.jpg", plate=plate, target=target)
             zoomed = self.zoom.crop_image(image, command)
@@ -283,11 +431,23 @@ class FfmpegVideoAlprRunner:
         print(f"{status['last_plate_event']['time']} | {plate.text} | zoom={command.zoom_ratio:.2f}")
 
     def _save_raw_frame(self, data: bytes, path: Path) -> None:
+        try:
+            from PIL import Image
+        except ModuleNotFoundError as error:
+            raise RuntimeError(
+                "Pillow is required only when writing frame previews"
+            ) from error
         image = Image.frombytes("RGB", (self.args.width, self.args.height), data)
         image.save(path, quality=85)
         protect_runtime_file(path)
 
-    def _save_annotated(self, image: Image.Image, path: Path, plate: Plate, target: Any) -> Path:
+    def _save_annotated(self, image: Any, path: Path, plate: Plate, target: Any) -> Path:
+        try:
+            from PIL import ImageDraw
+        except ModuleNotFoundError as error:
+            raise RuntimeError(
+                "Pillow is required only when writing frame previews"
+            ) from error
         result = image.copy()
         draw = ImageDraw.Draw(result)
         draw.rectangle(
@@ -335,14 +495,35 @@ class FfmpegVideoAlprRunner:
     def _stop_process(process: subprocess.Popen) -> None:
         if process.poll() is not None:
             return
-        try:
-            if hasattr(os, "killpg"):
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            else:
+
+        def send(sig: signal.Signals) -> None:
+            if os.name == "posix" and hasattr(os, "killpg"):
+                os.killpg(os.getpgid(process.pid), sig)
+            elif sig == signal.SIGTERM:
                 process.terminate()
+            else:
+                process.kill()
+
+        try:
+            send(signal.SIGTERM)
+        except ProcessLookupError:
+            # The producer may have exited between poll() and getpgid().
+            # Confirm and reap it before native teardown.
             process.wait(timeout=2)
-        except (OSError, subprocess.TimeoutExpired):
-            process.kill()
+            return
+        try:
+            process.wait(timeout=2)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            send(signal.SIGKILL)
+        except ProcessLookupError:
+            process.wait(timeout=2)
+            return
+        # Native teardown cannot begin until the producer is reaped. A second
+        # timeout or signal failure propagates and keeps adapter leases alive.
+        process.wait(timeout=2)
 
 
 def main() -> int:
