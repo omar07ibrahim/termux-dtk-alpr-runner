@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import secrets
@@ -79,6 +80,40 @@ def atomic_json(path: Path, data: dict[str, Any]) -> None:
 
 def atomic_text(path: Path, text: str) -> None:
     atomic_bytes(path, text.encode("utf-8"))
+
+
+class _ImageBufferLimitExceeded(Exception):
+    """Private encoder control signal that cannot be supplied by a caller."""
+
+
+class _BoundedImageBuffer(io.BytesIO):
+    def write(self, payload: bytes | bytearray) -> int:
+        if self.tell() + len(payload) > MAX_RUNTIME_RECORD_BYTES:
+            raise _ImageBufferLimitExceeded
+        return super().write(payload)
+
+
+def atomic_jpeg(path: Path, image: Any, *, quality: int) -> None:
+    """Encode a bounded JPEG in memory, then publish it atomically at 0600."""
+
+    if type(quality) is not int or not 1 <= quality <= 95:
+        raise RuntimeStorageError("runtime JPEG quality is out of bounds")
+    buffer = _BoundedImageBuffer()
+    limit_exceeded = False
+    encoding_failed = False
+    try:
+        image.save(buffer, format="JPEG", quality=quality)
+    except _ImageBufferLimitExceeded:
+        limit_exceeded = True
+    except Exception:
+        encoding_failed = True
+    if limit_exceeded:
+        raise RuntimeStorageError(
+            f"runtime image exceeds {MAX_RUNTIME_RECORD_BYTES} bytes"
+        ) from None
+    if encoding_failed:
+        raise RuntimeStorageError("cannot encode private runtime image") from None
+    atomic_bytes(path, buffer.getvalue())
 
 
 def atomic_bytes(path: Path, payload: bytes) -> None:

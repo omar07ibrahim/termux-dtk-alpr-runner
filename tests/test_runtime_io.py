@@ -11,12 +11,35 @@ from unittest import mock
 from alpr_runner.runtime_io import (
     MAX_RUNTIME_RECORD_BYTES,
     RuntimeStorageError,
+    atomic_jpeg,
     atomic_json,
     prepare_private_directory,
     private_relative_path,
     protect_runtime_file,
     source_descriptor,
 )
+
+
+class _SyntheticImage:
+    def __init__(self, payload: bytes, *, error: Exception | None = None) -> None:
+        self.payload = payload
+        self.error = error
+        self.calls: list[tuple[str, int]] = []
+
+    def save(self, stream: object, *, format: str, quality: int) -> None:
+        self.calls.append((format, quality))
+        if self.error is not None:
+            raise self.error
+        stream.write(self.payload)  # type: ignore[attr-defined]
+
+
+class _SameTypeEncoderFailure:
+    def save(self, stream: object, *, format: str, quality: int) -> None:
+        del stream, format, quality
+        try:
+            raise ValueError("private encoder cause")
+        except ValueError:
+            raise RuntimeStorageError("private encoder detail")
 
 
 class PrivateDirectoryTests(unittest.TestCase):
@@ -73,6 +96,103 @@ class PrivateDirectoryTests(unittest.TestCase):
 
 
 class AtomicRuntimeRecordTests(unittest.TestCase):
+    def test_jpeg_is_encoded_before_atomic_private_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = prepare_private_directory(Path(temporary) / "runtime")
+            path = output / "latest.jpg"
+            image = _SyntheticImage(b"\xff\xd8synthetic-jpeg\xff\xd9")
+
+            atomic_jpeg(path, image, quality=88)
+
+            self.assertEqual(path.read_bytes(), image.payload)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(image.calls, [("JPEG", 88)])
+            self.assertEqual(
+                [entry.name for entry in output.iterdir()],
+                ["latest.jpg"],
+            )
+
+    def test_jpeg_rejects_symlink_and_encoder_failure_without_replacing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = prepare_private_directory(Path(temporary) / "runtime")
+            original = output / "original.jpg"
+            original.write_bytes(b"original")
+            linked = output / "latest.jpg"
+            linked.symlink_to(original)
+
+            with self.assertRaisesRegex(
+                RuntimeStorageError,
+                "destination must be a regular file",
+            ):
+                atomic_jpeg(
+                    linked,
+                    _SyntheticImage(b"replacement"),
+                    quality=90,
+                )
+            self.assertEqual(original.read_bytes(), b"original")
+            self.assertTrue(linked.is_symlink())
+
+            failed = output / "failed.jpg"
+            with self.assertRaisesRegex(
+                RuntimeStorageError,
+                "cannot encode private runtime image",
+            ) as raised:
+                atomic_jpeg(
+                    failed,
+                    _SyntheticImage(
+                        b"",
+                        error=ValueError("private encoder detail"),
+                    ),
+                    quality=90,
+                )
+            self.assertFalse(failed.exists())
+            self.assertIsNone(raised.exception.__cause__)
+            self.assertIsNone(raised.exception.__context__)
+
+            same_type_failed = output / "same-type-failed.jpg"
+            with self.assertRaisesRegex(
+                RuntimeStorageError,
+                "^cannot encode private runtime image$",
+            ) as same_type:
+                atomic_jpeg(
+                    same_type_failed,
+                    _SameTypeEncoderFailure(),
+                    quality=90,
+                )
+            self.assertFalse(same_type_failed.exists())
+            self.assertIsNone(same_type.exception.__cause__)
+            self.assertIsNone(same_type.exception.__context__)
+
+    def test_jpeg_bounds_quality_and_encoded_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = prepare_private_directory(Path(temporary) / "runtime")
+            path = output / "latest.jpg"
+
+            for invalid in (True, 0, 96):
+                with self.subTest(quality=invalid):
+                    with self.assertRaisesRegex(
+                        RuntimeStorageError,
+                        "quality is out of bounds",
+                    ):
+                        atomic_jpeg(
+                            path,
+                            _SyntheticImage(b"image"),
+                            quality=invalid,  # type: ignore[arg-type]
+                        )
+
+            with self.assertRaisesRegex(
+                RuntimeStorageError,
+                "runtime image exceeds",
+            ):
+                atomic_jpeg(
+                    path,
+                    _SyntheticImage(b"x" * (MAX_RUNTIME_RECORD_BYTES + 1)),
+                    quality=90,
+                )
+            self.assertFalse(path.exists())
+
     def test_json_is_canonical_private_and_atomically_replaceable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = prepare_private_directory(Path(temporary) / "runtime")

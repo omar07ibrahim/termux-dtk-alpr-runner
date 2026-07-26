@@ -286,8 +286,10 @@ bash ubuntu/run_multi_video.sh \
 License plates, camera URLs, frames, timestamps, device identifiers, and
 vehicle metadata can be sensitive. The current implementation writes raw
 runtime JSON and preview images. Runtime directories are tightened to mode
-`0700`; JSON, HTML, and image artifacts are written or tightened to mode
-`0600`; source paths and RTSP authorities are excluded from status records.
+`0700`; preview JPEGs are first encoded into bounded memory and then published
+through descriptor-relative atomic replacement at mode `0600`. Symlink and
+special-file destinations fail closed, and source paths and RTSP authorities
+are excluded from status records.
 These controls do not provide retention, encryption, authentication, or plate
 redaction. Use only footage you are authorized to process, keep the output
 directory private, and do not expose the loopback dashboard through a reverse

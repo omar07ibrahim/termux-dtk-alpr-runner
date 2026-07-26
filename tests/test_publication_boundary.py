@@ -21,6 +21,7 @@ class RepositoryPublicationBoundaryTests(unittest.TestCase):
         app = (ROOT / "alpr_runner/app.py").read_text(encoding="utf-8")
         ffmpeg = (ROOT / "alpr_runner/ffmpeg_video.py").read_text(encoding="utf-8")
         multi = (ROOT / "alpr_runner/multi_video.py").read_text(encoding="utf-8")
+        video = (ROOT / "alpr_runner/video.py").read_text(encoding="utf-8")
 
         self.assertNotIn('"source": str(frame_path)', app)
         self.assertNotIn('"source": self.args.rtsp', ffmpeg)
@@ -29,3 +30,18 @@ class RepositoryPublicationBoundaryTests(unittest.TestCase):
         self.assertIn("source_descriptor(", app)
         self.assertIn("source_descriptor(", ffmpeg)
         self.assertIn("source_descriptor(", multi)
+        self.assertNotIn('"latest_preview": str(', video)
+        self.assertIn("private_relative_path(", video)
+
+    def test_preview_modules_use_atomic_in_memory_jpeg_publication(self) -> None:
+        for relative in (
+            "alpr_runner/app.py",
+            "alpr_runner/ffmpeg_video.py",
+            "alpr_runner/multi_video.py",
+            "alpr_runner/video.py",
+        ):
+            with self.subTest(module=relative):
+                source = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn("atomic_jpeg(", source)
+                self.assertNotIn(".save(", source)
+                self.assertNotIn("protect_runtime_file(", source)

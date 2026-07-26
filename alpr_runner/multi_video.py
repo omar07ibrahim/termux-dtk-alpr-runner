@@ -15,10 +15,10 @@ from PIL import Image, ImageDraw
 from .aggregation import PlateRegistry, local_time
 from .dtk import DtkLpr, Plate
 from .runtime_io import (
+    atomic_jpeg,
     atomic_json,
     prepare_private_directory,
     private_relative_path,
-    protect_runtime_file,
     source_descriptor,
 )
 from .video import ERR_CAPTURE_EOF, PIXFMT_RGB24, DtkVideoLibrary
@@ -330,8 +330,7 @@ class StreamWorker:
                 width=3,
             )
             draw.text((plate.x, max(0, plate.y - 16)), f"{plate.text} {plate.confidence}", fill=(255, 255, 255))
-        image.save(path, quality=88)
-        protect_runtime_file(path)
+        atomic_jpeg(path, image, quality=88)
         return path
 
     def _save_zoom(self, frame: ctypes.c_void_p, path: Path, command: Any) -> Path | None:
@@ -339,8 +338,7 @@ class StreamWorker:
         if image is None:
             return None
         zoomed = self.zoom.crop_image(image, command)
-        zoomed.save(path, quality=88)
-        protect_runtime_file(path)
+        atomic_jpeg(path, zoomed, quality=88)
         return path
 
 

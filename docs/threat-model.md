@@ -44,7 +44,10 @@ memory-safety defect in the SDK can compromise the runner.
 - Runtime directory leaves are non-symlink directories tightened to mode
   `0700`; JSON replacement rejects symlink and special-file destinations and
   writes mode `0600` files atomically.
-- Saved runtime images and generated HTML are tightened to mode `0600`.
+- Runtime images are encoded into bounded memory buffers and then published
+  through descriptor-relative atomic replacement at mode `0600`; symlink and
+  special-file destinations fail closed. Generated HTML uses the same private
+  atomic file boundary.
 - Status records use source-kind descriptors instead of camera URLs or host
   paths, and the still-image runner no longer prints the SDK system ID.
 - Runtime directories and vendor directories have dedicated ignore rules.

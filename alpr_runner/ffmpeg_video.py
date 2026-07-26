@@ -12,10 +12,10 @@ from typing import Any
 
 from .dtk import DtkLpr, Plate
 from .runtime_io import (
+    atomic_jpeg,
     atomic_json,
     prepare_private_directory,
     private_relative_path,
-    protect_runtime_file,
     source_descriptor,
 )
 from .zoom import ZoomController, plate_to_target
@@ -402,8 +402,11 @@ class FfmpegVideoAlprRunner:
             image = Image.frombytes("RGB", (self.args.width, self.args.height), latest)
             preview_path = self._save_annotated(image, self.out_dir / "latest.jpg", plate=plate, target=target)
             zoomed = self.zoom.crop_image(image, command)
-            zoomed.save(self.out_dir / "latest_zoom.jpg", quality=88)
-            protect_runtime_file(self.out_dir / "latest_zoom.jpg")
+            atomic_jpeg(
+                self.out_dir / "latest_zoom.jpg",
+                zoomed,
+                quality=88,
+            )
             zoom_path = self.out_dir / "latest_zoom.jpg"
 
         status = {
@@ -438,8 +441,7 @@ class FfmpegVideoAlprRunner:
                 "Pillow is required only when writing frame previews"
             ) from error
         image = Image.frombytes("RGB", (self.args.width, self.args.height), data)
-        image.save(path, quality=85)
-        protect_runtime_file(path)
+        atomic_jpeg(path, image, quality=85)
 
     def _save_annotated(self, image: Any, path: Path, plate: Plate, target: Any) -> Path:
         try:
@@ -466,8 +468,7 @@ class FfmpegVideoAlprRunner:
             outline=(39, 174, 96),
             width=4,
         )
-        result.save(path, quality=88)
-        protect_runtime_file(path)
+        atomic_jpeg(path, result, quality=88)
         return path
 
     @staticmethod

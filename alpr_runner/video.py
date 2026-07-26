@@ -12,9 +12,10 @@ from PIL import Image, ImageDraw
 
 from .dtk import DtkLpr, Plate
 from .runtime_io import (
+    atomic_jpeg,
     atomic_json,
     prepare_private_directory,
-    protect_runtime_file,
+    private_relative_path,
 )
 from .zoom import ZoomController, plate_to_target
 
@@ -257,7 +258,11 @@ class VideoAlprRunner:
             "plate": plate.to_json(),
             "target": target.to_json(),
             "zoom": command.to_json(),
-            "latest_preview": str(preview_path) if preview_path else None,
+            "latest_preview": (
+                private_relative_path(preview_path, self.out_dir)
+                if preview_path
+                else None
+            ),
             "performance_profile": {
                 "fps_limit": self.args.fps_limit,
                 "confirmations": self.args.confirmations,
@@ -323,8 +328,7 @@ class VideoAlprRunner:
                 width=3,
             )
             draw.text((plate.x, max(0, plate.y - 16)), f"{plate.text} {plate.confidence}", fill=(255, 255, 255))
-        image.save(path, quality=88)
-        protect_runtime_file(path)
+        atomic_jpeg(path, image, quality=88)
         return path
 
     def _save_zoom(self, frame: ctypes.c_void_p, path: Path, command) -> Path | None:
@@ -332,8 +336,7 @@ class VideoAlprRunner:
         if image is None:
             return None
         zoomed = self.zoom.crop_image(image, command)
-        zoomed.save(path, quality=88)
-        protect_runtime_file(path)
+        atomic_jpeg(path, zoomed, quality=88)
         return path
 
 

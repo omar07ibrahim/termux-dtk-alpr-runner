@@ -16,10 +16,10 @@ from PIL import Image, ImageDraw
 from .car_detector import OptionalYoloCarDetector
 from .dtk import DtkError, DtkLicenseError, DtkLpr
 from .runtime_io import (
+    atomic_jpeg,
     atomic_json,
     atomic_text,
     prepare_private_directory,
-    protect_runtime_file,
     source_descriptor,
 )
 from .zoom import Box, ZoomController, plate_to_target
@@ -309,10 +309,8 @@ def run() -> int:
             zoomed = zoom.crop_image(image, command)
             annotated = annotate(image, plates, targets, command)
 
-            annotated.save(out_dir / "latest.jpg", quality=90)
-            protect_runtime_file(out_dir / "latest.jpg")
-            zoomed.save(out_dir / "latest_zoom.jpg", quality=90)
-            protect_runtime_file(out_dir / "latest_zoom.jpg")
+            atomic_jpeg(out_dir / "latest.jpg", annotated, quality=90)
+            atomic_jpeg(out_dir / "latest_zoom.jpg", zoomed, quality=90)
             status = {
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "source": source_descriptor(args.source, args.input),
