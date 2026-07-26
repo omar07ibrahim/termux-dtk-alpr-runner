@@ -52,9 +52,9 @@
       "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
     },
     {
-      "bytes": 11543,
+      "bytes": 11659,
       "path": "README.md",
-      "sha256": "419e86701981e9382942784bc73ce62c88cde73758da83141288ba449362e471"
+      "sha256": "3936e13d694f3856d653b14e3c474a972451fa054c47285da55e0cf3b18c60e7"
     },
     {
       "bytes": 60,
@@ -67,9 +67,9 @@
       "sha256": "aa4650a57585a9fa97deb71d7fa56cbe183d7fb05bca3eade520be83b2c41d0e"
     },
     {
-      "bytes": 12111,
+      "bytes": 11999,
       "path": "alpr_runner/app.py",
-      "sha256": "8afdf5fc01ec9c0ffd7661f32540c6a41f720374f34734ff7ee2e9160e372885"
+      "sha256": "944f2e39e05854051aaa114b545d404c6d7622eae7a0d2ffd1bb3f3958bec6be"
     },
     {
       "bytes": 3560,
@@ -82,19 +82,19 @@
       "sha256": "8840037ec3cb9f35357843eb9d0b2f085197c05df2660c971c1434534b0131ed"
     },
     {
-      "bytes": 20748,
+      "bytes": 20689,
       "path": "alpr_runner/ffmpeg_video.py",
-      "sha256": "b8704066e9c7f8bbb0d7048b717e67473bb6739794b59c3cd561297e7a5df278"
+      "sha256": "f4ef83fa5a3c907e4b1cf60510c1f27f8ed4638e7fb2e587946361937cfc2d65"
     },
     {
-      "bytes": 16476,
+      "bytes": 16413,
       "path": "alpr_runner/multi_video.py",
-      "sha256": "00e4a2e4b100b8a2ccc964ce18ebafd834926862259dab3581feaa72b51dfcd5"
+      "sha256": "e5b999552b909a0c3262ba6cfe4eca93af65a2e8c220f456e6a63b16015e109d"
     },
     {
-      "bytes": 12351,
+      "bytes": 13588,
       "path": "alpr_runner/runtime_io.py",
-      "sha256": "1687591a207606756eafe9d14f72c1f15facb5eaed0c2d3fce91958335372ad1"
+      "sha256": "ff2c2310368fea852cc31e17c310b2bea239f07f7a7b27221a3a8cf2b8056598"
     },
     {
       "bytes": 23657,
@@ -102,9 +102,9 @@
       "sha256": "f61500cbe9e26f7361d1d7f1eb5da5f03676032d9bec312c85840515c9215de7"
     },
     {
-      "bytes": 14575,
+      "bytes": 14635,
       "path": "alpr_runner/video.py",
-      "sha256": "8d038dedc779274bb887f84f5cf06a35f6a9095238dc496c186e6acde7e241f1"
+      "sha256": "2784a3a3cd5baf5022d424289a804001411cc75d978fe26f0203ca6eb2dd5e1d"
     },
     {
       "bytes": 6675,
@@ -117,9 +117,9 @@
       "sha256": "57da61393f461dbcd797da65f4a99c284f447ac6a84410d6a85c60f3715e1659"
     },
     {
-      "bytes": 5337,
+      "bytes": 5520,
       "path": "docs/threat-model.md",
-      "sha256": "1049206d22743ff2736986eeabd46c57b165bcc02c5d9dda8981eb8417002c19"
+      "sha256": "9b85b838e9afbc6ba30391d5b3a1e11408adfd10277ec9e288fd30af01a56df6"
     },
     {
       "bytes": 1422,
@@ -137,9 +137,9 @@
       "sha256": "deddb14ebfe71f75ade930e7aa7267e9d444bde1756471a107dd75b8df68ec1a"
     },
     {
-      "bytes": 1279,
+      "bytes": 2033,
       "path": "tests/test_publication_boundary.py",
-      "sha256": "7a7f6f0543e1c41d812210fdc070851c7c7fc320d24bd810eb3274b080bce72a"
+      "sha256": "bca760794268c0a6aeea4cba370881636f8db9a893d94cb883bbbfc2996bdaae"
     },
     {
       "bytes": 29383,
@@ -147,9 +147,9 @@
       "sha256": "ae5ec540df309516ed43a175e2b94c21262b28c3643bfd9563553691550b6abe"
     },
     {
-      "bytes": 8004,
+      "bytes": 12610,
       "path": "tests/test_runtime_io.py",
-      "sha256": "5122049d4ea241ab194afdb24f223cdebf2196feb9a4d17eea601e261d0c087d"
+      "sha256": "1e0df87103ecc5e6ab912d2b26e978d3aa7e428db450f5d083ef298e4f66cb0f"
     },
     {
       "bytes": 17385,
