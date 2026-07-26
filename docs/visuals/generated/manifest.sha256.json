@@ -82,9 +82,9 @@
       "sha256": "8840037ec3cb9f35357843eb9d0b2f085197c05df2660c971c1434534b0131ed"
     },
     {
-      "bytes": 13769,
+      "bytes": 20748,
       "path": "alpr_runner/ffmpeg_video.py",
-      "sha256": "c6166c47d0456d196e45e1231862401098bf2fcc45447f2753bf256846f17356"
+      "sha256": "b8704066e9c7f8bbb0d7048b717e67473bb6739794b59c3cd561297e7a5df278"
     },
     {
       "bytes": 16476,
@@ -130,6 +130,11 @@
       "bytes": 7830,
       "path": "tests/test_aggregation.py",
       "sha256": "9bc1278c18fbb00ad3ba00443d27220f48e03ccb24040e7c51f5f488db43f87a"
+    },
+    {
+      "bytes": 21455,
+      "path": "tests/test_frame_leases.py",
+      "sha256": "deddb14ebfe71f75ade930e7aa7267e9d444bde1756471a107dd75b8df68ec1a"
     },
     {
       "bytes": 1279,
