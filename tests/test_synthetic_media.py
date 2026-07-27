@@ -259,6 +259,20 @@ class RecipeValidationTests(unittest.TestCase):
         ):
             validate_recipe(raw)
 
+    def test_interpolated_lane_spans_must_also_fit_inside_the_frame(self) -> None:
+        raw = default_recipe().to_json()
+        lane = raw["scene"]["lane_marks"][0]  # type: ignore[index]
+        lane["top_x"] = 0
+        lane["top_width"] = 1
+        lane["bottom_x"] = 1
+        lane["bottom_width"] = 3
+
+        with self.assertRaisesRegex(
+            RecipeValidationError,
+            "interpolated width must fit inside",
+        ):
+            validate_recipe(raw)
+
     def test_duplicate_keys_nonfinite_numbers_and_invalid_utf8_are_rejected(
         self,
     ) -> None:

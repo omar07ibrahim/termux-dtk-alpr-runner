@@ -408,6 +408,8 @@ def validate_recipe(raw: object) -> SyntheticMediaRecipe:
     lane_marks = _validate_lane_marks(
         raw_scene["lane_marks"],
         width=width,
+        height=height,
+        horizon_y=horizon_y,
     )
     vehicles = _validate_vehicles(
         raw_scene["vehicles"],
@@ -483,6 +485,8 @@ def _validate_lane_marks(
     raw: object,
     *,
     width: int,
+    height: int,
+    horizon_y: int,
 ) -> tuple[LaneMark, ...]:
     if not isinstance(raw, list):
         raise RecipeValidationError("scene.lane_marks must be an array")
@@ -536,15 +540,25 @@ def _validate_lane_marks(
             width,
             f"{field}.bottom",
         )
-        marks.append(
-            LaneMark(
-                top_x=top_x,
-                bottom_x=bottom_x,
-                top_width=top_width,
-                bottom_width=bottom_width,
-                color=_validate_color(mark["yuv"], f"{field}.yuv"),
-            )
+        validated = LaneMark(
+            top_x=top_x,
+            bottom_x=bottom_x,
+            top_width=top_width,
+            bottom_width=bottom_width,
+            color=_validate_color(mark["yuv"], f"{field}.yuv"),
         )
+        interpolation_span = height - 1 - horizon_y
+        for offset in range(interpolation_span + 1):
+            left, interpolated_width = _interpolated_lane_span(
+                validated,
+                offset=offset,
+                total=interpolation_span,
+            )
+            if left < 0 or left + interpolated_width > width:
+                raise RecipeValidationError(
+                    f"{field} interpolated width must fit inside the frame"
+                )
+        marks.append(validated)
     return tuple(marks)
 
 
@@ -702,13 +716,11 @@ def _draw_lane_mark(
     span = height - 1 - horizon_y
     for y in range(horizon_y, height):
         offset = y - horizon_y
-        center = mark.top_x + (
-            (mark.bottom_x - mark.top_x) * offset
-        ) // span
-        mark_width = mark.top_width + (
-            (mark.bottom_width - mark.top_width) * offset
-        ) // span
-        left = center - (mark_width // 2)
+        left, mark_width = _interpolated_lane_span(
+            mark,
+            offset=offset,
+            total=span,
+        )
         _fill_rectangle(
             y_plane,
             u_plane,
@@ -721,6 +733,21 @@ def _draw_lane_mark(
             rectangle_height=1,
             color=mark.color,
         )
+
+
+def _interpolated_lane_span(
+    mark: LaneMark,
+    *,
+    offset: int,
+    total: int,
+) -> tuple[int, int]:
+    center = mark.top_x + (
+        (mark.bottom_x - mark.top_x) * offset
+    ) // total
+    width = mark.top_width + (
+        (mark.bottom_width - mark.top_width) * offset
+    ) // total
+    return center - width // 2, width
 
 
 def _draw_vehicle(

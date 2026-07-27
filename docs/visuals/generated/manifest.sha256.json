@@ -102,9 +102,9 @@
       "sha256": "f61500cbe9e26f7361d1d7f1eb5da5f03676032d9bec312c85840515c9215de7"
     },
     {
-      "bytes": 27785,
+      "bytes": 28555,
       "path": "alpr_runner/synthetic_media.py",
-      "sha256": "60f8ea502ed559252d5da7c35497b4fd0ba2935ff0ac80bb7f96dab41a5ebed7"
+      "sha256": "a4d0861e448573b8162e7a7e7ed40c05dec8eae1b30ce4dd8a9b1106915c15ed"
     },
     {
       "bytes": 14635,
@@ -177,9 +177,9 @@
       "sha256": "505d2f06497842890473ada7b69572e51958fc56983cab403aa2245f0afe496e"
     },
     {
-      "bytes": 15402,
+      "bytes": 15880,
       "path": "tests/test_synthetic_media.py",
-      "sha256": "789bb36dee73180950d995fcfe73455dfb53236bf09af2084a9727a6c70c692e"
+      "sha256": "8e46809271c904e7327837f1f2172116cba1d2f676197d727bcf59634841709d"
     },
     {
       "bytes": 2620,
