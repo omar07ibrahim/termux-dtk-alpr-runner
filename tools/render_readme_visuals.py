@@ -35,6 +35,7 @@ if str(REPOSITORY) not in sys.path:
 GENERATED_RELATIVE = Path("docs/visuals/generated")
 GENERATED_DIRECTORY = REPOSITORY / GENERATED_RELATIVE
 FIXTURE_RELATIVE = Path("examples/synthetic-events-v1.json")
+MEDIA_RECIPE_RELATIVE = Path("examples/synthetic-media-v1.json")
 TEMP_RELATIVE = Path(".t")
 MANIFEST_NAME = "manifest.sha256.json"
 
@@ -193,6 +194,7 @@ def _input_paths(root: Path = REPOSITORY) -> tuple[Path, ...]:
         Path("docs/media-evidence.md"),
         Path("docs/threat-model.md"),
         FIXTURE_RELATIVE,
+        MEDIA_RECIPE_RELATIVE,
         Path("requirements-media-evidence.lock"),
         Path("tools/render_readme_visuals.py"),
     }

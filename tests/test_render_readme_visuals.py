@@ -67,6 +67,7 @@ class CanonicalFixtureTests(unittest.TestCase):
         paths = {path.as_posix() for path in renderer._input_paths()}
 
         self.assertIn("docs/media-evidence.md", paths)
+        self.assertIn("examples/synthetic-media-v1.json", paths)
         self.assertIn("requirements-media-evidence.lock", paths)
         self.assertIn("tests/test_runtime_io.py", paths)
         self.assertEqual(

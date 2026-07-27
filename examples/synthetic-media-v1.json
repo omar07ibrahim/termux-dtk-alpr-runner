@@ -1,0 +1,83 @@
+{
+  "fps": 6,
+  "frame_count": 18,
+  "height": 96,
+  "scene": {
+    "horizon_y": 26,
+    "lane_marks": [
+      {
+        "bottom_width": 5,
+        "bottom_x": 24,
+        "top_width": 1,
+        "top_x": 58,
+        "yuv": [
+          210,
+          128,
+          128
+        ]
+      },
+      {
+        "bottom_width": 4,
+        "bottom_x": 80,
+        "top_width": 1,
+        "top_x": 80,
+        "yuv": [
+          210,
+          128,
+          128
+        ]
+      },
+      {
+        "bottom_width": 5,
+        "bottom_x": 135,
+        "top_width": 1,
+        "top_x": 102,
+        "yuv": [
+          210,
+          128,
+          128
+        ]
+      }
+    ],
+    "road_yuv": [
+      52,
+      128,
+      128
+    ],
+    "sky_yuv": [
+      132,
+      148,
+      112
+    ],
+    "vehicles": [
+      {
+        "delta_x": 3,
+        "delta_y": 0,
+        "height": 20,
+        "start_x": 18,
+        "start_y": 58,
+        "width": 30,
+        "yuv": [
+          112,
+          104,
+          174
+        ]
+      },
+      {
+        "delta_x": -2,
+        "delta_y": 1,
+        "height": 16,
+        "start_x": 116,
+        "start_y": 45,
+        "width": 24,
+        "yuv": [
+          154,
+          166,
+          92
+        ]
+      }
+    ]
+  },
+  "schema_version": 1,
+  "width": 160
+}

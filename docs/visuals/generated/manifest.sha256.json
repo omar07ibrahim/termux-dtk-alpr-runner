@@ -52,9 +52,9 @@
       "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
     },
     {
-      "bytes": 12104,
+      "bytes": 12209,
       "path": "README.md",
-      "sha256": "09b2a45ad4966b737bc392fbeab74ba6fab4d49a9a3e332721bd5ba48a65302b"
+      "sha256": "c9f8ac04e946433921dfb2d057478930ba90b578eff2b1b7e52eaa44a557f734"
     },
     {
       "bytes": 60,
@@ -102,6 +102,11 @@
       "sha256": "f61500cbe9e26f7361d1d7f1eb5da5f03676032d9bec312c85840515c9215de7"
     },
     {
+      "bytes": 27785,
+      "path": "alpr_runner/synthetic_media.py",
+      "sha256": "60f8ea502ed559252d5da7c35497b4fd0ba2935ff0ac80bb7f96dab41a5ebed7"
+    },
+    {
       "bytes": 14635,
       "path": "alpr_runner/video.py",
       "sha256": "2784a3a3cd5baf5022d424289a804001411cc75d978fe26f0203ca6eb2dd5e1d"
@@ -117,9 +122,9 @@
       "sha256": "57da61393f461dbcd797da65f4a99c284f447ac6a84410d6a85c60f3715e1659"
     },
     {
-      "bytes": 3076,
+      "bytes": 3307,
       "path": "docs/media-evidence.md",
-      "sha256": "6d6dcb82499007e38d8bb780b256e81a412b40c907e7ada4a45dcaf8fc907119"
+      "sha256": "66d93c0f547396e8ab675730c47b455e03bca53331e4b3bdd913c8bc417be7ed"
     },
     {
       "bytes": 5520,
@@ -130,6 +135,11 @@
       "bytes": 1422,
       "path": "examples/synthetic-events-v1.json",
       "sha256": "fcd01504ad72e8356815e128978f00cfc5c3bd68fb802c7ff64f89f3296b1909"
+    },
+    {
+      "bytes": 1288,
+      "path": "examples/synthetic-media-v1.json",
+      "sha256": "ab8d7a7518d3d952d725ee96f0de9b6ecfdef7102f4b78ddcb125cab062466f6"
     },
     {
       "bytes": 264,
@@ -152,9 +162,9 @@
       "sha256": "bca760794268c0a6aeea4cba370881636f8db9a893d94cb883bbbfc2996bdaae"
     },
     {
-      "bytes": 29503,
+      "bytes": 29568,
       "path": "tests/test_render_readme_visuals.py",
-      "sha256": "2d3baf2c23301ff325f9c4587dc2e8ddf1f737fd9c6c1f0b94f18d6a80ca4f7c"
+      "sha256": "f77e53a185e489bbb9d4b827ebe4f7c0835c6276273b41da2350f580b59c922f"
     },
     {
       "bytes": 12610,
@@ -167,14 +177,19 @@
       "sha256": "505d2f06497842890473ada7b69572e51958fc56983cab403aa2245f0afe496e"
     },
     {
+      "bytes": 15402,
+      "path": "tests/test_synthetic_media.py",
+      "sha256": "789bb36dee73180950d995fcfe73455dfb53236bf09af2084a9727a6c70c692e"
+    },
+    {
       "bytes": 2620,
       "path": "tests/test_zoom_vendor_independent.py",
       "sha256": "3e60dcfa50bf7405d72e681fc461ae4616222462f70c115c55442dce7f90ea0f"
     },
     {
-      "bytes": 67915,
+      "bytes": 68011,
       "path": "tools/render_readme_visuals.py",
-      "sha256": "2e4669178847d21a4a38bf9c6dfde7cd868b705cf98850f3e29067ed78c445fd"
+      "sha256": "036c0f8437ef5c5dd2cf847123df7ac0ddef9dff54f01c53976845f4b9a64a07"
     }
   ],
   "manifest": {

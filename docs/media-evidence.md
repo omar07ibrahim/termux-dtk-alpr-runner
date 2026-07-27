@@ -59,8 +59,11 @@ license material, camera credential, or user media is changed by this step.
 
 ## Evidence and non-claims
 
-The generated source video contains only deterministic geometric shapes. The
-media probe may establish:
+The generated source video contains only deterministic geometric shapes. Its
+closed, numeric-only recipe is
+[`examples/synthetic-media-v1.json`](../examples/synthetic-media-v1.json);
+`alpr_runner.synthetic_media` validates it and renders the exact YUV4MPEG2
+bytes using only the Python standard library. The media probe may establish:
 
 - the exact synthetic source bytes and recipe;
 - the exact FFmpeg executable and sanitized command profile;

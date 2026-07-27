@@ -51,10 +51,12 @@ aggregation registry. They do **not** exercise or imitate ALPR recognition.
 
 The separate [verified media boundary](docs/media-evidence.md) defines a
 hash-pinned, repository-local FFmpeg profile for upcoming frame-delivery
-evidence. Its scope and non-claims are explicit: it will exercise synthetic
-geometric media without asserting DTK execution, recognition quality, camera
-compatibility, or performance. Until that evidence is committed and passes its
-own verifier, the figures below remain event-level evidence only.
+evidence. Its canonical
+[numeric-only geometric recipe](examples/synthetic-media-v1.json) is already
+source-verifiable without FFmpeg. The scope and non-claims are explicit: the
+future process probe will not assert DTK execution, recognition quality,
+camera compatibility, or performance. Until that evidence is committed and
+passes its own verifier, the figures below remain event-level evidence only.
 
 Run the public fixture directly:
 
