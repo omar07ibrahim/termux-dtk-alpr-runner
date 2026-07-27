@@ -87,9 +87,9 @@
       "sha256": "d5ef06bcb57e8e4b134b7a447de94fc65d57aca1eefd50d0151d4ba109bb7ccf"
     },
     {
-      "bytes": 20689,
+      "bytes": 32789,
       "path": "alpr_runner/ffmpeg_video.py",
-      "sha256": "f4ef83fa5a3c907e4b1cf60510c1f27f8ed4638e7fb2e587946361937cfc2d65"
+      "sha256": "a7a544bbacd136fb0423a126ab17f64ab87ca054b0cc83bd9dbb99c7e55f55b6"
     },
     {
       "bytes": 16413,
@@ -122,9 +122,9 @@
       "sha256": "5a786b80a6275e46665138faccf52b0044b9239cc0a49a03a5dd552577a6e6cb"
     },
     {
-      "bytes": 4395,
+      "bytes": 4884,
       "path": "docs/charter.md",
-      "sha256": "57da61393f461dbcd797da65f4a99c284f447ac6a84410d6a85c60f3715e1659"
+      "sha256": "05947914599b94ba16a6374fd0a9210b7af6a81ececf5b410071dfcbc79b3606"
     },
     {
       "bytes": 3307,
@@ -132,9 +132,9 @@
       "sha256": "66d93c0f547396e8ab675730c47b455e03bca53331e4b3bdd913c8bc417be7ed"
     },
     {
-      "bytes": 5520,
+      "bytes": 6695,
       "path": "docs/threat-model.md",
-      "sha256": "9b85b838e9afbc6ba30391d5b3a1e11408adfd10277ec9e288fd30af01a56df6"
+      "sha256": "33a9a3a7e685d74adc4144b5e8d55fa469634b1064a6e83a14617424c477534e"
     },
     {
       "bytes": 1422,
@@ -162,14 +162,14 @@
       "sha256": "b6e489135890e9dcb4fd77709ef7e013f3a830c240c5143a0ac318fe50638b23"
     },
     {
-      "bytes": 21455,
+      "bytes": 53538,
       "path": "tests/test_frame_leases.py",
-      "sha256": "deddb14ebfe71f75ade930e7aa7267e9d444bde1756471a107dd75b8df68ec1a"
+      "sha256": "8a879f1689a4506f23a0f9d86ddc4a777958fe26dcbc1e0800a36733d836e889"
     },
     {
-      "bytes": 2033,
+      "bytes": 2397,
       "path": "tests/test_publication_boundary.py",
-      "sha256": "bca760794268c0a6aeea4cba370881636f8db9a893d94cb883bbbfc2996bdaae"
+      "sha256": "e155f551a501eac0145cff56bcaee4bb535b6faa98548198f811f5f3c387a820"
     },
     {
       "bytes": 29568,

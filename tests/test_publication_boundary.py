@@ -45,3 +45,12 @@ class RepositoryPublicationBoundaryTests(unittest.TestCase):
                 self.assertIn("atomic_jpeg(", source)
                 self.assertNotIn(".save(", source)
                 self.assertNotIn("protect_runtime_file(", source)
+
+    def test_ffmpeg_preview_binding_has_no_latest_frame_fallback(self) -> None:
+        source = (ROOT / "alpr_runner/ffmpeg_video.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("latest_frame_bytes", source)
+        self.assertIn("VideoFrame_Timestamp(frame)", source)
+        self.assertIn("frame_leases.copy_payload(", source)

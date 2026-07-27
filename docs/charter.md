@@ -21,6 +21,9 @@ model.
   aggregation and zoom-geometry modules without loading images or an SDK.
 - Loopback-only status dashboard and JSON/image runtime outputs.
 - Private-mode runtime directories and files with redacted source descriptors.
+- Exact-ID RGB frame leases with count and byte backpressure, opaque-handle
+  callback tests, sanitized callback failures, and no latest-frame preview
+  fallback.
 - A reproducible evidence renderer with two byte-identical CLI runs, bounded
   subprocess streams, exact generated-tree checks, source hashes, privacy
   scans, accessible SVG validation, and manifest-last publication.
@@ -44,6 +47,8 @@ These components are not vendored or fetched automatically by the repository.
 - No authentication, authorization, TLS, or multi-user dashboard boundary.
 - No retention, encryption, redaction, or deletion policy for runtime data.
 - No claim that a proprietary SDK result is independently reproducible.
+- No claim that offline fakes prove the licensed SDK's callback ABI, timestamp
+  propagation, terminal completion, ownership transfer, or Destroy quiescence.
 - The committed synthetic evidence executes one canonical validated event
   trace through orchestration, aggregation, and normalized zoom geometry. It
   does not prove exhaustive validation, recognition, media decoding, camera
@@ -64,10 +69,12 @@ Before a release is described as reproducible, the repository must have:
 9. a declared license for the repository-owned source.
 
 The event-level evidence bundle now covers criterion 2, part of 6, part of 7,
-and criterion 8 for its vendor-independent boundary. Criterion 5 is not
-complete because the repository-owned fixture has no granted redistribution
-license yet. The bundle does not make the broader camera/SDK project
-reproducible: the dependency contract, bounded media subprocess behavior,
+and criterion 8 for its vendor-independent boundary. Frame-buffer ownership is
+count- and byte-bounded in the repository-owned wrapper, while the licensed
+SDK contract still requires device conformance. Criterion 5 is not complete
+because the repository-owned fixture has no granted redistribution license
+yet. The bundle does not make the broader camera/SDK project reproducible: the
+dependency contract, production integration of bounded media supervision,
 dashboard evidence, failure-path coverage, and repository license remain
 release work.
 

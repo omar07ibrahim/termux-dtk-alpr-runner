@@ -50,6 +50,17 @@ memory-safety defect in the SDK can compromise the runner.
   atomic file boundary.
 - Status records use source-kind descriptors instead of camera URLs or host
   paths, and the still-image runner no longer prints the SDK system ID.
+- FFmpeg-video input rejects non-byte or wrong-sized RGB24 frames before any
+  native call. Native buffers have no implicit trailing byte and stay paired
+  with their immutable payload by callback timestamp, never by a global
+  "latest frame" fallback.
+- Video-frame leases are bounded by both count and retained bytes. The default
+  is 16 leases and a 96 MiB ceiling; payloads borrowed by overlapping plate
+  callbacks remain charged after completion until the final exact borrow is
+  released.
+- Exceptions at the `ctypes` callback boundary are contained as stable,
+  source-free failure codes, request an ingestion stop, and cannot bypass the
+  exact-once native plate-destruction path.
 - Runtime directories and vendor directories have dedicated ignore rules.
 - The runner stops when the SDK reports an unlicensed state unless the operator
   explicitly enables the development-only override.
@@ -77,6 +88,10 @@ memory-safety defect in the SDK can compromise the runner.
 - FFmpeg and native SDK stderr are not consistently bounded or sanitized.
 - Plate aggregation keeps plaintext plate keys in memory and on disk.
 - The SDK system identifier may be printed by existing launch paths.
+- The proprietary SDK's callback ABI, timestamp propagation, frame-ownership
+  transfer, terminal-completion boundary, and Destroy quiescence cannot be
+  verified from this repository. The wrapper conservatively retains memory
+  through callback overlap, but licensed-device conformance remains required.
 - There is no dependency lock, SBOM, signed release, or vulnerability policy.
 
 Until these gaps are closed, use only a single-user, isolated, local test
@@ -108,9 +123,12 @@ capture.
 - Redacted source descriptors at every log and status boundary.
 - Private-mode, atomic runtime storage with an explicit retention command.
 - Opt-in exposure of full plate text, disabled for portfolio evidence.
-- Bounded, timeout-aware FFmpeg supervision with process-group cleanup.
+- Production integration of the bounded, timeout-aware FFmpeg supervisor and
+  its process-group cleanup receipts.
 - Strict request routing and security headers for the dashboard.
-- Pure-Python contract tests with a fake native adapter.
+- Licensed-device conformance tests for the documented DTK ownership and
+  callback-order assumptions; offline tests use opaque fake handles and prove
+  only the repository-owned wrapper model.
 - A future redistributable synthetic-media pipeline for the image/video
   boundary. The current event-only evidence pipeline never requires
   proprietary data but intentionally stops before decoding or recognition.
