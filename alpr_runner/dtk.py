@@ -61,32 +61,77 @@ class DtkLpr:
         self.lib = ctypes.CDLL(str(self.lib_path), mode=ctypes.RTLD_GLOBAL)
         self._bind_api()
 
-        self.params = self.lib.LPRParams_Create()
-        if not self.params:
-            raise DtkError("LPRParams_Create failed")
-        self.lib.LPRParams_set_Countries(self.params, countries.encode("utf-8"))
-        self.lib.LPRParams_set_MinPlateWidth(self.params, int(min_plate_width))
-        self.lib.LPRParams_set_MaxPlateWidth(self.params, int(max_plate_width))
-        self.lib.LPRParams_set_FormatPlateText(self.params, True)
-        self.lib.LPRParams_set_RecognizeMakeModel(self.params, bool(recognize_make_model))
-        self.lib.LPRParams_set_NumThreads(self.params, int(num_threads))
-        self.lib.LPRParams_set_FPSLimit(self.params, int(fps_limit))
-        self.lib.LPRParams_set_ResultConfirmationsCount(self.params, int(result_confirmations))
-        self.lib.LPRParams_set_ResultAccumulationTime(self.params, int(result_accumulation_ms))
-        self.lib.LPRParams_set_ResultDuplicatesTimeout(self.params, int(duplicate_timeout_ms))
-        self.lib.LPRParams_set_ResultSelectionMethod(self.params, 1)
-
-        self._plate_callback_ref = plate_callback
-        self.engine = self.lib.LPREngine_Create(self.params, bool(video), plate_callback)
-        if not self.engine:
-            raise DtkError("LPREngine_Create failed")
-
-        license_state = self.lib.LPREngine_IsLicensed(self.engine)
-        if require_license and license_state != 0:
-            raise DtkLicenseError(
-                f"DTK license check failed: LPREngine_IsLicensed()={license_state}. "
-                "Activate the official ARM64 SDK license inside Ubuntu/Termux."
+        self.params = None
+        self.engine = None
+        try:
+            self.params = self.lib.LPRParams_Create()
+            if not self.params:
+                raise DtkError("LPRParams_Create failed")
+            self.lib.LPRParams_set_Countries(
+                self.params,
+                countries.encode("utf-8"),
             )
+            self.lib.LPRParams_set_MinPlateWidth(
+                self.params,
+                int(min_plate_width),
+            )
+            self.lib.LPRParams_set_MaxPlateWidth(
+                self.params,
+                int(max_plate_width),
+            )
+            self.lib.LPRParams_set_FormatPlateText(self.params, True)
+            self.lib.LPRParams_set_RecognizeMakeModel(
+                self.params,
+                bool(recognize_make_model),
+            )
+            self.lib.LPRParams_set_NumThreads(
+                self.params,
+                int(num_threads),
+            )
+            self.lib.LPRParams_set_FPSLimit(
+                self.params,
+                int(fps_limit),
+            )
+            self.lib.LPRParams_set_ResultConfirmationsCount(
+                self.params,
+                int(result_confirmations),
+            )
+            self.lib.LPRParams_set_ResultAccumulationTime(
+                self.params,
+                int(result_accumulation_ms),
+            )
+            self.lib.LPRParams_set_ResultDuplicatesTimeout(
+                self.params,
+                int(duplicate_timeout_ms),
+            )
+            self.lib.LPRParams_set_ResultSelectionMethod(self.params, 1)
+
+            self._plate_callback_ref = plate_callback
+            self.engine = self.lib.LPREngine_Create(
+                self.params,
+                bool(video),
+                plate_callback,
+            )
+            if not self.engine:
+                raise DtkError("LPREngine_Create failed")
+
+            license_state = self.lib.LPREngine_IsLicensed(self.engine)
+            if require_license and license_state != 0:
+                raise DtkLicenseError(
+                    "DTK license check failed: "
+                    f"LPREngine_IsLicensed()={license_state}. "
+                    "Activate the official ARM64 SDK license inside "
+                    "Ubuntu/Termux."
+                )
+        except BaseException as error:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup(
+                    "DTK initialization and cleanup failures",
+                    [error, cleanup_error],
+                ) from None
+            raise
 
     def close(self) -> None:
         engine = getattr(self, "engine", None)

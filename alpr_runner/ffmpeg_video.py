@@ -4,7 +4,6 @@ import argparse
 import ctypes
 import os
 import signal
-import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .dtk import DtkLpr, Plate
+from .ffmpeg_io import FfmpegFrameSource, FrameSpec
 from .runtime_io import (
     atomic_jpeg,
     atomic_json,
@@ -27,6 +27,34 @@ DEFAULT_BUFFER_RETAIN = 16
 DEFAULT_MAX_INFLIGHT_FRAME_MIB = 96
 PLATE_CALLBACK_FAILURE = "dtk_plate_callback_failed"
 COMPLETED_CALLBACK_FAILURE = "dtk_completed_callback_failed"
+
+
+class _NativeCallbackFailure(RuntimeError):
+    """A source-free callback failure that remains idempotently observable."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(f"native callback failed: {code}")
+
+
+class _NativeShutdownAmbiguous(RuntimeError):
+    """Native destruction started but did not publish safe completion."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "native shutdown completion is ambiguous; refusing retry"
+        )
+
+
+class _SignalAwareEvent(threading.Event):
+    """Event whose signal-path request is a reentrant plain assignment."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._signal_requested = False
+
+    def is_set(self) -> bool:
+        return self._signal_requested or super().is_set()
 
 
 def _rgb24_frame_size(width: int, height: int) -> int:
@@ -283,6 +311,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preview-every", type=int, default=20)
     parser.add_argument("--status-print-interval", type=float, default=2.0)
     parser.add_argument(
+        "--ffmpeg-startup-timeout",
+        type=float,
+        default=10.0,
+        help="seconds allowed from FFmpeg spawn request to the first RGB frame",
+    )
+    parser.add_argument(
+        "--ffmpeg-idle-timeout",
+        type=float,
+        default=5.0,
+        help="seconds allowed between progress on consecutive RGB frames",
+    )
+    parser.add_argument(
+        "--ffmpeg-stderr-kib",
+        type=int,
+        default=64,
+        help="maximum FFmpeg stderr retained privately before failing closed",
+    )
+    parser.add_argument(
+        "--ffmpeg-terminate-timeout",
+        type=float,
+        default=2.0,
+        help="seconds allowed for supervised FFmpeg process-group termination",
+    )
+    parser.add_argument(
+        "--ffmpeg-kill-timeout",
+        type=float,
+        default=2.0,
+        help="seconds allowed for supervised FFmpeg process-group kill/reap",
+    )
+    parser.add_argument(
         "--buffer-retain",
         type=int,
         default=DEFAULT_BUFFER_RETAIN,
@@ -303,7 +361,10 @@ def parse_args() -> argparse.Namespace:
 
 class FfmpegVideoAlprRunner:
     def __init__(self, args: argparse.Namespace) -> None:
-        frame_size = _rgb24_frame_size(args.width, args.height)
+        # Validate the closed media and supervisor contracts before creating a
+        # runtime directory, resolving a vendor path, changing cwd, or loading
+        # either proprietary native library.
+        frame_spec = FrameSpec(args.width, args.height, args.fps)
         if type(args.buffer_retain) is not int:
             raise TypeError("buffer_retain must be an int")
         if args.buffer_retain <= 0:
@@ -313,16 +374,32 @@ class FfmpegVideoAlprRunner:
         if args.max_inflight_frame_mib <= 0:
             raise ValueError("max_inflight_frame_mib must be greater than zero")
         frame_budget = args.max_inflight_frame_mib * MEBIBYTE
-        if frame_size * 2 > frame_budget:
+        if frame_spec.bytes_per_frame * 2 > frame_budget:
             raise ValueError(
                 "max_inflight_frame_mib cannot retain one RGB buffer and payload"
             )
+        if type(args.ffmpeg_stderr_kib) is not int:
+            raise TypeError("ffmpeg_stderr_kib must be an int")
+        command = self._build_ffmpeg_command(args, frame_spec)
+        frame_source = FfmpegFrameSource(
+            command,
+            frame_spec,
+            source_kind="rtsp",
+            source=args.rtsp,
+            startup_timeout=args.ffmpeg_startup_timeout,
+            idle_timeout=args.ffmpeg_idle_timeout,
+            stderr_limit=args.ffmpeg_stderr_kib * 1024,
+            terminate_timeout=args.ffmpeg_terminate_timeout,
+            kill_timeout=args.ffmpeg_kill_timeout,
+        )
 
         # Keep the pure-Python orchestration and lease contract importable
         # without loading the optional DTK video/Pillow runtime.
         from .video import PIXFMT_RGB24, DtkVideoLibrary
 
         self.args = args
+        self.frame_spec = frame_spec
+        self.frame_source = frame_source
         self.out_dir = prepare_private_directory(args.out)
         self.dtk_dir = Path(args.dtk_dir).expanduser().resolve()
         os.chdir(self.dtk_dir)
@@ -330,7 +407,7 @@ class FfmpegVideoAlprRunner:
         self.video_lib = DtkVideoLibrary(self.dtk_dir)
         self.pixel_format = PIXFMT_RGB24
         self.zoom = ZoomController(max_zoom=args.max_zoom)
-        self.stop_event = threading.Event()
+        self.stop_event = _SignalAwareEvent()
         self.lock = threading.RLock()
         self.frame_count = 0
         self.plate_count = 0
@@ -362,35 +439,77 @@ class FfmpegVideoAlprRunner:
             result_accumulation_ms=args.accumulation_ms,
             duplicate_timeout_ms=args.duplicate_timeout_ms,
         )
-        self.lpr._completed_callback_ref = self.completed_callback
-        self.lpr.lib.LPREngine_SetFrameProcessingCompletedCallback(self.lpr.engine, self.completed_callback)
+        try:
+            self.lpr._completed_callback_ref = self.completed_callback
+            self.lpr.lib.LPREngine_SetFrameProcessingCompletedCallback(
+                self.lpr.engine,
+                self.completed_callback,
+            )
+        except BaseException as error:
+            cleanup_failures: list[BaseException] = []
+            try:
+                self.frame_source.close()
+            except BaseException as cleanup_error:
+                cleanup_failures.append(cleanup_error)
+            try:
+                self.lpr.close()
+            except BaseException as cleanup_error:
+                cleanup_failures.append(cleanup_error)
+            if cleanup_failures:
+                raise BaseExceptionGroup(
+                    "runner initialization and cleanup failures",
+                    [error, *cleanup_failures],
+                ) from None
+            raise
+        self._source_shutdown = False
+        self._lpr_shutdown_started = False
+        self._lpr_shutdown = False
+        self._leases_shutdown = False
+        self._run_body_finished = False
+        self._run_body_failure: BaseException | None = None
+        self._run_cleanup_failures: list[BaseException] = []
+        self._run_selected_error: BaseException | None = None
+        self._run_outcome_ready = False
+        self._previous_signal_handlers: dict[int, Any] | None = None
 
     def run(self) -> int:
-        print(f"DTK version: {self.lpr.version()}")
-        print("RTSP capture: ffmpeg rawvideo -> DTK VideoFrame_CreateFromImageBuffer")
-        command = self._ffmpeg_command()
-        print("FFmpeg input: <redacted RTSP source>")
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=0,
-            start_new_session=os.name == "posix",
-        )
-        stderr_thread = threading.Thread(target=self._drain_stderr, args=(process,), daemon=True)
-        stderr_thread.start()
+        try: return self._run_once()
+        except BaseException as error:
+            # A control-flow failure at the guarded call boundary resumes the
+            # same ordered, idempotent teardown before propagation.
+            if getattr(self, "_run_outcome_ready", False):
+                return self._resolve_run_outcome()
+            if getattr(self, "_run_body_finished", False):
+                self._append_run_cleanup_failure(error)
+            elif not isinstance(error, KeyboardInterrupt):
+                self._run_body_failure = error
+            self._run_body_finished = True
+            return self._finish_run()
 
-        frame_size = self.args.width * self.args.height * 3
-        started = time.time()
-        last_print = 0.0
-        last_print_frames = 0
+    def _run_once(self) -> int:
         try:
-            while not self.stop_event.is_set():
-                data = self._read_exact(process.stdout, frame_size) if process.stdout else b""
-                if len(data) != frame_size:
-                    if process.poll() is not None:
-                        raise RuntimeError(f"ffmpeg exited with code {process.returncode}")
-                    continue
+            self._install_termination_signal_handlers()
+            print(f"DTK version: {self.lpr.version()}")
+            print(
+                "RTSP capture: ffmpeg rawvideo -> "
+                "DTK VideoFrame_CreateFromImageBuffer"
+            )
+            print("FFmpeg input: <redacted RTSP source>")
+
+            started = time.time()
+            last_print = 0.0
+            last_print_frames = 0
+            while True:
+                self._raise_for_callback_failure()
+                data = self.frame_source.read_frame(self.stop_event)
+                if data is None:
+                    break
+                # A native callback or caller cancellation can race with a
+                # bounded producer read. Never hand off the just-read frame
+                # after either stop condition has become observable.
+                self._raise_for_callback_failure()
+                if self.stop_event.is_set():
+                    break
                 self._put_raw_frame(data)
 
                 elapsed = max(0.001, time.time() - started)
@@ -416,6 +535,7 @@ class FfmpegVideoAlprRunner:
                         "input_fps": round(frames / elapsed, 2),
                         "live_fps": round(live_fps, 2),
                         "frame_size": {"width": self.args.width, "height": self.args.height},
+                        "ffmpeg": self.frame_source.receipt(),
                     }
                     with self.lock:
                         status.update(self.last_status)
@@ -429,25 +549,185 @@ class FfmpegVideoAlprRunner:
             self._raise_for_callback_failure()
         except KeyboardInterrupt:
             pass
-        finally:
+        except BaseException as error:
+            self._run_body_failure = error
+        self._run_body_finished = True
+        return self._finish_run()
+
+    def _finish_run(self) -> int:
+        cleanup_failures = self._run_cleanup_failures
+        body_failure = self._run_body_failure
+        try:
             self.stop_event.set()
-            self._shutdown(process)
+        except BaseException as error:
+            self._append_run_cleanup_failure(error)
+        try:
+            self._shutdown()
+        except BaseException as error:
+            self._append_run_cleanup_failure(error)
+            # KeyboardInterrupt/SystemExit can land immediately before or
+            # after a stage call. Retry once from explicit stage state; normal
+            # operational Exceptions remain fail-stop and are not hidden.
+            if not isinstance(error, Exception):
+                try:
+                    self._shutdown()
+                except BaseException as retry_error:
+                    self._append_run_cleanup_failure(retry_error)
+
+        # Check independently even if a prior teardown stage failed. If LPR
+        # destruction succeeded, all leases have already been safely released
+        # and no last in-flight callback can race past this point. A callback
+        # failure already raised by the body is the same persistent condition,
+        # not a second cleanup failure.
+        try:
+            self._raise_for_callback_failure()
+        except BaseException as error:
+            if not (
+                isinstance(body_failure, _NativeCallbackFailure)
+                and isinstance(error, _NativeCallbackFailure)
+                and body_failure.code == error.code
+            ):
+                self._append_run_cleanup_failure(error)
+        try:
+            self._restore_termination_signal_handlers()
+        except BaseException as error:
+            self._append_run_cleanup_failure(error)
+            try:
+                self._restore_termination_signal_handlers()
+            except BaseException as retry_error:
+                self._append_run_cleanup_failure(retry_error)
+
+        cleanup_failure: BaseException | None
+        if len(cleanup_failures) > 1:
+            cleanup_failure = BaseExceptionGroup(
+                "ffmpeg runner cleanup failures",
+                cleanup_failures,
+            )
+        elif cleanup_failures:
+            cleanup_failure = cleanup_failures[0]
+        else:
+            cleanup_failure = None
+
+        selected_error: BaseException | None
+        if body_failure is not None and cleanup_failure is not None:
+            selected_error = BaseExceptionGroup(
+                "ffmpeg runner body and cleanup failures",
+                [body_failure, cleanup_failure],
+            )
+        elif cleanup_failure is not None:
+            selected_error = cleanup_failure
+        else:
+            selected_error = body_failure
+        self._run_selected_error = selected_error
+        self._run_outcome_ready = True
+        return self._resolve_run_outcome()
+
+    def _resolve_run_outcome(self) -> int:
+        if not self._run_outcome_ready:
+            raise RuntimeError("ffmpeg runner outcome is not ready")
+        if self._run_selected_error is not None:
+            raise self._run_selected_error
         return 0
 
-    def _shutdown(self, process: subprocess.Popen) -> None:
-        """Stop producers, destroy the adapter, then release backing buffers."""
+    def _append_run_cleanup_failure(
+        self,
+        error: BaseException,
+    ) -> None:
+        for existing in self._run_cleanup_failures:
+            if existing is error:
+                return
+            if (
+                isinstance(existing, _NativeCallbackFailure)
+                and isinstance(error, _NativeCallbackFailure)
+                and existing.code == error.code
+            ):
+                return
+        self._run_cleanup_failures.append(error)
 
-        self._stop_process(process)
-        self.lpr.close()
-        # LPREngine_Destroy has returned, so this runner treats the adapter
-        # as quiesced before clearing outstanding leases. If producer stop or
-        # destruction raises, this line is deliberately not reached.
-        self.frame_leases.close()
+    def _shutdown(self) -> None:
+        """Resume ordered teardown from the first unfinished stage."""
 
-    def _ffmpeg_command(self) -> list[str]:
-        vf = f"fps={self.args.fps},scale={self.args.width}:{self.args.height}:flags=fast_bilinear"
+        if not getattr(self, "_source_shutdown", False):
+            self.frame_source.close()
+            self._source_shutdown = True
+        if not getattr(self, "_lpr_shutdown", False):
+            if getattr(self, "_lpr_shutdown_started", False):
+                raise _NativeShutdownAmbiguous()
+            # Keep intent publication and the native call on one trace line:
+            # an exception before the line is retryable; after publication it
+            # is deliberately ambiguous and must never double-destroy.
+            self._lpr_shutdown_started = True; self.lpr.close()
+            self._lpr_shutdown = True
+        if not getattr(self, "_leases_shutdown", False):
+            # LPREngine_Destroy has returned, so this runner treats the
+            # adapter as quiesced before clearing outstanding leases.
+            self.frame_leases.close()
+            self._leases_shutdown = True
+
+    def _install_termination_signal_handlers(self) -> None:
+        """Convert main-thread SIGINT/SIGTERM into an ordered stop request."""
+
+        if (
+            threading.current_thread() is not threading.main_thread()
+            or self._previous_signal_handlers is not None
+        ):
+            return
+        # Publish rollback ownership before the first global mutation. Each
+        # entry is recorded before installing its replacement, so an
+        # interruption at any later bytecode remains safely restorable.
+        self._previous_signal_handlers = {}
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous = signal.getsignal(signum)
+            self._previous_signal_handlers[signum] = previous
+            signal.signal(signum, self._handle_termination_signal)
+
+    def _restore_termination_signal_handlers(self) -> None:
+        previous = self._previous_signal_handlers
+        if previous is None:
+            return
+        restore_failures: list[BaseException] = []
+        for signum, handler in tuple(previous.items()):
+            try:
+                signal.signal(signum, handler)
+            except BaseException as error:
+                restore_failures.append(error)
+            else:
+                # Delete only after restoration returns. An interruption
+                # before deletion keeps an idempotent retry record.
+                del previous[signum]
+        if not previous:
+            self._previous_signal_handlers = None
+        if len(restore_failures) == 1:
+            raise restore_failures[0]
+        if restore_failures:
+            raise BaseExceptionGroup(
+                "signal handler restoration failures",
+                restore_failures,
+            ) from None
+
+    def _handle_termination_signal(
+        self,
+        _signum: int,
+        _frame: Any,
+    ) -> None:
+        stop_event = self.stop_event
+        if isinstance(stop_event, _SignalAwareEvent):
+            # Python signal handlers can re-enter between arbitrary bytecodes.
+            # Do not acquire Event's non-reentrant Condition lock here.
+            stop_event._signal_requested = True
+
+    @staticmethod
+    def _build_ffmpeg_command(
+        args: argparse.Namespace,
+        frame_spec: FrameSpec,
+    ) -> list[str]:
+        vf = (
+            f"fps={frame_spec.fps},"
+            f"scale={frame_spec.width}:{frame_spec.height}:flags=fast_bilinear"
+        )
         return [
             "ffmpeg",
+            "-nostdin",
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -462,7 +742,7 @@ class FfmpegVideoAlprRunner:
             "-probesize",
             "1000000",
             "-i",
-            self.args.rtsp,
+            args.rtsp,
             "-an",
             "-vf",
             vf,
@@ -570,7 +850,7 @@ class FfmpegVideoAlprRunner:
         with self.lock:
             failure = self.callback_failure
         if failure is not None:
-            raise RuntimeError(f"native callback failed: {failure}")
+            raise _NativeCallbackFailure(failure)
 
     def _completed_callback_boundary(
         self,
@@ -797,62 +1077,6 @@ class FfmpegVideoAlprRunner:
         )
         atomic_jpeg(path, result, quality=88)
         return path
-
-    @staticmethod
-    def _read_exact(stream: Any, size: int) -> bytes:
-        chunks = []
-        remaining = size
-        while remaining > 0:
-            chunk = stream.read(remaining)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
-
-    @staticmethod
-    def _drain_stderr(process: subprocess.Popen) -> None:
-        if process.stderr is None:
-            return
-        for raw in iter(process.stderr.readline, b""):
-            text = raw.decode("utf-8", errors="replace").strip()
-            if text:
-                print(f"ffmpeg: {text}")
-
-    @staticmethod
-    def _stop_process(process: subprocess.Popen) -> None:
-        if process.poll() is not None:
-            return
-
-        def send(sig: signal.Signals) -> None:
-            if os.name == "posix" and hasattr(os, "killpg"):
-                os.killpg(os.getpgid(process.pid), sig)
-            elif sig == signal.SIGTERM:
-                process.terminate()
-            else:
-                process.kill()
-
-        try:
-            send(signal.SIGTERM)
-        except ProcessLookupError:
-            # The producer may have exited between poll() and getpgid().
-            # Confirm and reap it before native teardown.
-            process.wait(timeout=2)
-            return
-        try:
-            process.wait(timeout=2)
-            return
-        except subprocess.TimeoutExpired:
-            pass
-        try:
-            send(signal.SIGKILL)
-        except ProcessLookupError:
-            process.wait(timeout=2)
-            return
-        # Native teardown cannot begin until the producer is reaped. A second
-        # timeout or signal failure propagates and keeps adapter leases alive.
-        process.wait(timeout=2)
-
 
 def main() -> int:
     return FfmpegVideoAlprRunner(parse_args()).run()

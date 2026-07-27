@@ -77,19 +77,19 @@
       "sha256": "37295abc897c038435da182056795fc2d29ff2cf801b6b2a3d677e52b07da834"
     },
     {
-      "bytes": 10380,
+      "bytes": 11406,
       "path": "alpr_runner/dtk.py",
-      "sha256": "8840037ec3cb9f35357843eb9d0b2f085197c05df2660c971c1434534b0131ed"
+      "sha256": "bd49e16458d542a353ae47cdce2bb8550c32b81e61ed1465e4c432bb16979317"
     },
     {
-      "bytes": 28020,
+      "bytes": 42209,
       "path": "alpr_runner/ffmpeg_io.py",
-      "sha256": "d5ef06bcb57e8e4b134b7a447de94fc65d57aca1eefd50d0151d4ba109bb7ccf"
+      "sha256": "a4c3c224599e058e7514356c5c19a524552a2f44e4e573b5d575d4a201aed64b"
     },
     {
-      "bytes": 32789,
+      "bytes": 41976,
       "path": "alpr_runner/ffmpeg_video.py",
-      "sha256": "a7a544bbacd136fb0423a126ab17f64ab87ca054b0cc83bd9dbb99c7e55f55b6"
+      "sha256": "e440ec90f9d22e8ea5721f32eae2304b2368e44dbe38c761bce9177fd3d70fcf"
     },
     {
       "bytes": 16413,
@@ -122,9 +122,9 @@
       "sha256": "5a786b80a6275e46665138faccf52b0044b9239cc0a49a03a5dd552577a6e6cb"
     },
     {
-      "bytes": 4884,
+      "bytes": 5374,
       "path": "docs/charter.md",
-      "sha256": "05947914599b94ba16a6374fd0a9210b7af6a81ececf5b410071dfcbc79b3606"
+      "sha256": "cedf5f1b8ed7d2cc0ae4bde2c4af5ac2f0e323d72517d48ec214614f92d17390"
     },
     {
       "bytes": 3307,
@@ -132,9 +132,9 @@
       "sha256": "66d93c0f547396e8ab675730c47b455e03bca53331e4b3bdd913c8bc417be7ed"
     },
     {
-      "bytes": 6695,
+      "bytes": 9119,
       "path": "docs/threat-model.md",
-      "sha256": "33a9a3a7e685d74adc4144b5e8d55fa469634b1064a6e83a14617424c477534e"
+      "sha256": "cbe24b2cc503df54a53572039a6902ee2ddfb445d90c09c2b3d897b8076203c6"
     },
     {
       "bytes": 1422,
@@ -157,14 +157,24 @@
       "sha256": "9bc1278c18fbb00ad3ba00443d27220f48e03ccb24040e7c51f5f488db43f87a"
     },
     {
-      "bytes": 24730,
-      "path": "tests/test_ffmpeg_io.py",
-      "sha256": "b6e489135890e9dcb4fd77709ef7e013f3a830c240c5143a0ac318fe50638b23"
+      "bytes": 2150,
+      "path": "tests/test_dtk_lifecycle.py",
+      "sha256": "20d2a89e1c2c091a55a6b29895a41e9d2747e594683775dfcd04d7eee5d06284"
     },
     {
-      "bytes": 53538,
+      "bytes": 67310,
+      "path": "tests/test_ffmpeg_io.py",
+      "sha256": "17af8e69a3546991fd56da0d3a7cafee5e2fc3a6afdc697fd1ba8c5d268d4f12"
+    },
+    {
+      "bytes": 37699,
+      "path": "tests/test_ffmpeg_runner.py",
+      "sha256": "ca3ebcf53470f4063d0f1deac30bf800f42e81594c109871b8b54f412486b48c"
+    },
+    {
+      "bytes": 50806,
       "path": "tests/test_frame_leases.py",
-      "sha256": "8a879f1689a4506f23a0f9d86ddc4a777958fe26dcbc1e0800a36733d836e889"
+      "sha256": "9ffcb3964f75dfd18ba04036446f792c8fa7185d09e0c59c117cf353e3e4e2b3"
     },
     {
       "bytes": 2397,

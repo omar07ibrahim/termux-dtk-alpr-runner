@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import ctypes
 import gc
-import signal
-import subprocess
 import threading
 import unittest
 import weakref
@@ -543,8 +541,15 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         args = SimpleNamespace(
             width=1280,
             height=720,
+            fps=20,
             buffer_retain=DEFAULT_BUFFER_RETAIN,
             max_inflight_frame_mib=5,
+            ffmpeg_stderr_kib=64,
+            rtsp="rtsp://127.0.0.1/live",
+            ffmpeg_startup_timeout=10.0,
+            ffmpeg_idle_timeout=5.0,
+            ffmpeg_terminate_timeout=2.0,
+            ffmpeg_kill_timeout=2.0,
         )
         with self.assertRaisesRegex(
             ValueError,
@@ -569,10 +574,17 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
                 values = {
                     "width": 1280,
                     "height": 720,
+                    "fps": 20,
                     "buffer_retain": DEFAULT_BUFFER_RETAIN,
                     "max_inflight_frame_mib": (
                         DEFAULT_MAX_INFLIGHT_FRAME_MIB
                     ),
+                    "ffmpeg_stderr_kib": 64,
+                    "rtsp": "rtsp://127.0.0.1/live",
+                    "ffmpeg_startup_timeout": 10.0,
+                    "ffmpeg_idle_timeout": 5.0,
+                    "ffmpeg_terminate_timeout": 2.0,
+                    "ffmpeg_kill_timeout": 2.0,
                 }
                 values[field] = value
                 with self.assertRaises(error_type):
@@ -1265,13 +1277,15 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
     def test_shutdown_destroys_adapter_before_releasing_leases(self) -> None:
         runner = FfmpegVideoAlprRunner.__new__(FfmpegVideoAlprRunner)
         events: list[str] = []
-        runner._stop_process = lambda _process: events.append("producer-stopped")
+        runner.frame_source = SimpleNamespace(
+            close=lambda: events.append("producer-stopped")
+        )
         runner.lpr = SimpleNamespace(close=lambda: events.append("adapter-destroyed"))
         runner.frame_leases = SimpleNamespace(
             close=lambda: events.append("leases-released")
         )
 
-        runner._shutdown(object())  # type: ignore[arg-type]
+        runner._shutdown()
 
         self.assertEqual(
             events,
@@ -1286,7 +1300,7 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         reference = pool.references[1]
         del buffer
 
-        runner._stop_process = lambda _process: None
+        runner.frame_source = SimpleNamespace(close=lambda: None)
 
         def fail_close() -> None:
             raise RuntimeError("synthetic destroy error")
@@ -1295,7 +1309,7 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         runner.frame_leases = pool
 
         with self.assertRaisesRegex(RuntimeError, "synthetic destroy error"):
-            runner._shutdown(object())  # type: ignore[arg-type]
+            runner._shutdown()
 
         gc.collect()
         self.assertFalse(pool.closed)
@@ -1303,65 +1317,7 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(reference())
         self.assertEqual(pool.close(), 1)
 
-    def test_forced_process_stop_is_reaped_before_adapter_destruction(
-        self,
-    ) -> None:
-        events: list[str] = []
-
-        class Process:
-            pid = 7001
-
-            @staticmethod
-            def poll() -> None:
-                events.append("poll")
-                return None
-
-            @staticmethod
-            def wait(*, timeout: int) -> int:
-                events.append(f"wait:{timeout}")
-                if events.count("wait:2") == 1:
-                    raise subprocess.TimeoutExpired("ffmpeg", timeout)
-                events.append("producer-reaped")
-                return -signal.SIGKILL
-
-        def kill_group(group_id: int, sent_signal: signal.Signals) -> None:
-            events.append(f"signal:{group_id}:{sent_signal.name}")
-
-        runner = FfmpegVideoAlprRunner.__new__(FfmpegVideoAlprRunner)
-        runner.lpr = SimpleNamespace(
-            close=lambda: events.append("adapter-destroyed")
-        )
-        runner.frame_leases = SimpleNamespace(
-            close=lambda: events.append("leases-released")
-        )
-
-        with (
-            patch(
-                "alpr_runner.ffmpeg_video.os.getpgid",
-                return_value=7001,
-            ),
-            patch(
-                "alpr_runner.ffmpeg_video.os.killpg",
-                side_effect=kill_group,
-            ),
-        ):
-            runner._shutdown(Process())  # type: ignore[arg-type]
-
-        self.assertEqual(
-            events,
-            [
-                "poll",
-                "signal:7001:SIGTERM",
-                "wait:2",
-                "signal:7001:SIGKILL",
-                "wait:2",
-                "producer-reaped",
-                "adapter-destroyed",
-                "leases-released",
-            ],
-        )
-
-    def test_unconfirmed_process_stop_keeps_adapter_and_leases_alive(
+    def test_unconfirmed_source_cleanup_keeps_adapter_and_leases_alive(
         self,
     ) -> None:
         events: list[str] = []
@@ -1371,32 +1327,22 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         reference = pool.references[1]
         del buffer
 
-        class Process:
-            pid = 7002
-
-            @staticmethod
-            def poll() -> None:
-                return None
-
-            @staticmethod
-            def wait(*, timeout: int) -> int:
-                raise subprocess.TimeoutExpired("ffmpeg", timeout)
-
         runner = FfmpegVideoAlprRunner.__new__(FfmpegVideoAlprRunner)
+        runner.frame_source = SimpleNamespace(
+            close=lambda: (_ for _ in ()).throw(
+                RuntimeError("synthetic producer cleanup error")
+            )
+        )
         runner.lpr = SimpleNamespace(
             close=lambda: events.append("adapter-destroyed")
         )
         runner.frame_leases = pool
 
-        with (
-            patch(
-                "alpr_runner.ffmpeg_video.os.getpgid",
-                return_value=7002,
-            ),
-            patch("alpr_runner.ffmpeg_video.os.killpg"),
-            self.assertRaises(subprocess.TimeoutExpired),
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "synthetic producer cleanup error",
         ):
-            runner._shutdown(Process())  # type: ignore[arg-type]
+            runner._shutdown()
 
         gc.collect()
         self.assertEqual(events, [])
@@ -1404,47 +1350,3 @@ class FfmpegRunnerLeaseIntegrationTests(unittest.TestCase):
         self.assertEqual(pool.active_ids, (1,))
         self.assertIsNotNone(reference())
         self.assertEqual(pool.close(), 1)
-
-    def test_exit_during_process_group_lookup_is_reaped_before_destroy(
-        self,
-    ) -> None:
-        events: list[str] = []
-
-        class Process:
-            pid = 7003
-
-            @staticmethod
-            def poll() -> None:
-                events.append("poll")
-                return None
-
-            @staticmethod
-            def wait(*, timeout: int) -> int:
-                events.append(f"wait:{timeout}")
-                events.append("producer-reaped")
-                return 0
-
-        runner = FfmpegVideoAlprRunner.__new__(FfmpegVideoAlprRunner)
-        runner.lpr = SimpleNamespace(
-            close=lambda: events.append("adapter-destroyed")
-        )
-        runner.frame_leases = SimpleNamespace(
-            close=lambda: events.append("leases-released")
-        )
-
-        with patch(
-            "alpr_runner.ffmpeg_video.os.getpgid",
-            side_effect=ProcessLookupError,
-        ):
-            runner._shutdown(Process())  # type: ignore[arg-type]
-
-        self.assertEqual(
-            events,
-            [
-                "poll",
-                "wait:2",
-                "producer-reaped",
-                "adapter-destroyed",
-                "leases-released",
-            ],
-        )

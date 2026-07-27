@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import signal
@@ -21,6 +22,25 @@ from alpr_runner.ffmpeg_io import (
 
 def _python_child(source: str) -> list[str]:
     return [sys.executable, "-S", "-c", source]
+
+
+def _source_line(
+    function: object,
+    text: str,
+    *,
+    occurrence: int = 0,
+) -> int:
+    lines, first_line = inspect.getsourcelines(function)
+    matches = [
+        first_line + index
+        for index, line in enumerate(lines)
+        if line.strip() == text
+    ]
+    if not 0 <= occurrence < len(matches):
+        raise AssertionError(
+            f"missing occurrence {occurrence} for {text!r}: {matches!r}"
+        )
+    return matches[occurrence]
 
 
 def _source(
@@ -47,6 +67,42 @@ def _source(
     )
 
 
+def _private_command_source(private: str) -> FfmpegFrameSource:
+    return FfmpegFrameSource(
+        ["ffmpeg", "-i", private],
+        FrameSpec(1, 1, 1),
+        source_kind="rtsp",
+        source=private,
+        startup_timeout=1.0,
+        idle_timeout=1.0,
+        stderr_limit=1024,
+        terminate_timeout=0.2,
+        kill_timeout=0.2,
+    )
+
+
+def _sleeping_child() -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        _python_child("import time; time.sleep(10)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+
+def _kill_if_running(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait(timeout=2)
+
+
 class _RecordingWaitProcess:
     def __init__(self, return_code: int) -> None:
         self.return_code = return_code
@@ -55,6 +111,76 @@ class _RecordingWaitProcess:
     def wait(self, *, timeout: float) -> int:
         self.wait_timeouts.append(timeout)
         return self.return_code
+
+
+class _InterruptingArgsProcess:
+    """Delegate to a real child but interrupt its first args redaction."""
+
+    def __init__(
+        self,
+        process: subprocess.Popen[bytes],
+        *,
+        interrupt_first_redaction: bool = True,
+        first_redaction_error: BaseException | None = None,
+    ) -> None:
+        self._process = process
+        self._interrupt_first_redaction = interrupt_first_redaction
+        self._first_redaction_error = (
+            first_redaction_error or KeyboardInterrupt()
+        )
+        self.redaction_attempts = 0
+
+    @property
+    def args(self) -> object:
+        return self._process.args
+
+    @args.setter
+    def args(self, value: object) -> None:
+        self.redaction_attempts += 1
+        if (
+            self._interrupt_first_redaction
+            and self.redaction_attempts == 1
+        ):
+            raise self._first_redaction_error
+        self._process.args = value
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._process, name)
+
+
+class _InterruptingPidProcess:
+    """Delegate to a real child while faulting PID capture."""
+
+    def __init__(
+        self,
+        process: subprocess.Popen[bytes],
+        *,
+        always_interrupt: bool,
+    ) -> None:
+        self._process = process
+        self._always_interrupt = always_interrupt
+        self.pid_reads = 0
+        self.interruption = KeyboardInterrupt(
+            "synthetic PID capture interrupt"
+        )
+
+    @property
+    def args(self) -> object:
+        return self._process.args
+
+    @args.setter
+    def args(self, value: object) -> None:
+        self._process.args = value
+
+    @property
+    def pid(self) -> int:
+        self.pid_reads += 1
+        if self._always_interrupt or self.pid_reads == 1:
+            raise self.interruption
+        return self._process.pid
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._process, name)
 
 
 class FrameSpecTests(unittest.TestCase):
@@ -141,6 +267,7 @@ class FfmpegFrameSourceTests(unittest.TestCase):
             },
         )
         self.assertIsNone(source.read_frame())
+        self.assertIsNone(source._process)
 
     def test_truncated_frame_fails_closed_and_reaps(self) -> None:
         source = _source("import os; os.write(1, b'ab')")
@@ -350,6 +477,10 @@ class FfmpegFrameSourceTests(unittest.TestCase):
             kill_timeout=1.0,
         )
         self.assertEqual(source.read_frame(), b"abc")
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
 
         source.close()
 
@@ -357,8 +488,8 @@ class FfmpegFrameSourceTests(unittest.TestCase):
         self.assertEqual(source.receipt()["exit_code"], -signal.SIGKILL)
         self.assertIs(source.receipt()["process_group_closed"], True)
         self.assertEqual(source.state, "closed")
-        self.assertIsNotNone(source._process)
-        self.assertEqual(source._process.poll(), -signal.SIGKILL)
+        self.assertIsNone(source._process)
+        self.assertEqual(process.poll(), -signal.SIGKILL)
 
     @unittest.skipUnless(
         sys.platform.startswith("linux") and hasattr(os, "fork"),
@@ -550,6 +681,639 @@ os._exit(0)
         source.close()
         self.assertIs(source.receipt()["process_reaped"], True)
 
+    def test_context_manager_preserves_nonstandard_cleanup_failure(
+        self,
+    ) -> None:
+        source = _source("raise SystemExit(0)")
+        body_failure = ValueError("synthetic body failure")
+        cleanup_failure = KeyboardInterrupt("synthetic cleanup interrupt")
+
+        with (
+            patch.object(source, "close", side_effect=cleanup_failure),
+            self.assertRaises(BaseExceptionGroup) as raised,
+        ):
+            source.__exit__(
+                type(body_failure),
+                body_failure,
+                None,
+            )
+
+        self.assertEqual(
+            raised.exception.exceptions,
+            (body_failure, cleanup_failure),
+        )
+
+        with (
+            patch.object(source, "close", side_effect=cleanup_failure),
+            self.assertRaises(KeyboardInterrupt) as standalone,
+        ):
+            source.__exit__(None, None, None)
+        self.assertIs(standalone.exception, cleanup_failure)
+
+    def test_detected_failure_preserves_interrupted_cleanup_and_fails_closed(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.52/private"
+        source = _source(
+            "import time; time.sleep(10)",
+            private_source=private,
+        )
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        cleanup_failure = KeyboardInterrupt("synthetic cleanup interrupt")
+
+        with (
+            patch.object(
+                source,
+                "_terminate_and_reap",
+                side_effect=cleanup_failure,
+            ),
+            self.assertRaises(BaseExceptionGroup) as raised,
+        ):
+            source._raise_failure("startup_timeout")
+
+        primary, preserved_cleanup = raised.exception.exceptions
+        self.assertIsInstance(primary, FfmpegSupervisorError)
+        self.assertEqual(primary.code, "startup_timeout")  # type: ignore[union-attr]
+        self.assertIs(preserved_cleanup, cleanup_failure)
+        self.assertEqual(source.state, "failed")
+        self.assertEqual(source.receipt()["failure_code"], "startup_timeout")
+        self.assertEqual(source.receipt()["cleanup_code"], "cleanup_failed")
+        self.assertIsNone(process.poll())
+        public = str(raised.exception) + json.dumps(
+            source.receipt(),
+            sort_keys=True,
+        )
+        self.assertNotIn(private, public)
+        self.assertNotIn("fixture-value", public)
+
+        source.close()
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertIsNotNone(process.poll())
+
+    def test_interrupted_close_retries_cleanup_before_propagating(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.53/private"
+        source = _source(
+            "import time; time.sleep(10)",
+            private_source=private,
+        )
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        original_cleanup = source._terminate_and_reap
+        cleanup_failure = KeyboardInterrupt("synthetic cleanup interrupt")
+        calls = 0
+
+        def interrupt_once() -> str | None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise cleanup_failure
+            return original_cleanup()
+
+        with (
+            patch.object(
+                source,
+                "_terminate_and_reap",
+                side_effect=interrupt_once,
+            ),
+            self.assertRaises(KeyboardInterrupt) as raised,
+        ):
+            source.close()
+
+        receipt = source.receipt()
+        self.assertIs(raised.exception, cleanup_failure)
+        self.assertEqual(calls, 2)
+        self.assertEqual(source.state, "failed")
+        self.assertEqual(receipt["failure_code"], "cleanup_failed")
+        self.assertIs(receipt["process_reaped"], True)
+        self.assertIs(receipt["process_group_closed"], True)
+        self.assertIsNone(source._process)
+        self.assertIsNotNone(process.poll())
+        public = str(raised.exception) + json.dumps(
+            receipt,
+            sort_keys=True,
+        )
+        self.assertNotIn(private, public)
+        self.assertNotIn("fixture-value", public)
+
+        source.close()
+        self.assertIsNotNone(process.poll())
+
+    def test_interrupted_eof_finalization_fails_closed_after_retry(
+        self,
+    ) -> None:
+        source = _source("import os; os.write(1, b'abc')")
+        self.assertEqual(source.read_frame(), b"abc")
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        original_cleanup = source._terminate_and_reap
+        cleanup_failure = KeyboardInterrupt("synthetic EOF cleanup interrupt")
+        calls = 0
+
+        def interrupt_once() -> str | None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise cleanup_failure
+            return original_cleanup()
+
+        with (
+            patch.object(
+                source,
+                "_terminate_and_reap",
+                side_effect=interrupt_once,
+            ),
+            self.assertRaises(KeyboardInterrupt) as raised,
+        ):
+            source.read_frame()
+
+        receipt = source.receipt()
+        self.assertIs(raised.exception, cleanup_failure)
+        self.assertEqual(calls, 2)
+        self.assertEqual(source.state, "failed")
+        self.assertEqual(receipt["failure_code"], "cleanup_failed")
+        self.assertIs(receipt["process_reaped"], True)
+        self.assertIs(receipt["process_group_closed"], True)
+        self.assertIsNone(source._process)
+        self.assertIsNotNone(process.poll())
+        with self.assertRaises(FfmpegSupervisorError) as failed_closed:
+            source.read_frame()
+        self.assertEqual(failed_closed.exception.code, "cleanup_failed")
+
+        source.close()
+        self.assertIsNotNone(process.poll())
+
+    def test_interrupted_descriptor_cleanup_retains_handle_for_retry(
+        self,
+    ) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        self.assertIsNotNone(process.stdout)
+        self.assertIsNotNone(process.stderr)
+        cleanup_failure = KeyboardInterrupt("synthetic descriptor interrupt")
+        original_failure = RuntimeError("synthetic primary failure")
+
+        with (
+            patch.object(
+                source,
+                "_close_io",
+                side_effect=cleanup_failure,
+            ),
+            self.assertRaises(BaseExceptionGroup) as raised,
+        ):
+            source._abort_started_process(original_failure)
+
+        self.assertEqual(
+            raised.exception.exceptions,
+            (original_failure, cleanup_failure),
+        )
+        self.assertEqual(source.state, "failed")
+        self.assertIs(source._process, process)
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertFalse(process.stdout.closed)  # type: ignore[union-attr]
+        self.assertFalse(process.stderr.closed)  # type: ignore[union-attr]
+
+        source.close()
+        self.assertTrue(process.stdout.closed)  # type: ignore[union-attr]
+        self.assertTrue(process.stderr.closed)  # type: ignore[union-attr]
+        self.assertIsNone(source._process)
+        self.assertIsNone(source.receipt()["cleanup_code"])
+        self.assertIsNotNone(process.poll())
+
+    def test_interrupted_selector_close_retains_handle_for_retry(
+        self,
+    ) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        selector = source._selector
+        self.assertIsNotNone(process)
+        self.assertIsNotNone(selector)
+        if process is None or selector is None:
+            self.fail("started source has incomplete cleanup ownership")
+        self.assertEqual(len(selector.get_map()), 2)
+        cleanup_failure = KeyboardInterrupt("synthetic selector interrupt")
+        original_failure = RuntimeError("synthetic primary failure")
+
+        with (
+            patch.object(
+                selector,
+                "close",
+                side_effect=cleanup_failure,
+            ),
+            self.assertRaises(BaseExceptionGroup) as raised,
+        ):
+            source._abort_started_process(original_failure)
+
+        self.assertEqual(
+            raised.exception.exceptions,
+            (original_failure, cleanup_failure),
+        )
+        self.assertEqual(source.state, "failed")
+        self.assertIs(source._process, process)
+        self.assertIs(source._selector, selector)
+        self.assertEqual(len(selector.get_map()), 2)
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+
+        source.close()
+        self.assertIsNone(source._selector)
+        self.assertIsNone(selector.get_map())
+        self.assertIsNone(source._process)
+        self.assertIsNone(source.receipt()["cleanup_code"])
+        self.assertIsNotNone(process.poll())
+
+    def test_pipe_close_error_attempts_sibling_and_retains_owner(
+        self,
+    ) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if (
+            process is None
+            or process.stdout is None
+            or process.stderr is None
+        ):
+            self.fail("started source has incomplete pipe ownership")
+        stdout = process.stdout
+        stderr = process.stderr
+        cleanup_failure = OSError("synthetic stdout close failure")
+        original_failure = RuntimeError("synthetic primary failure")
+        original_stderr_close = stderr.close
+
+        with (
+            patch.object(
+                stdout,
+                "close",
+                side_effect=cleanup_failure,
+            ),
+            patch.object(
+                stderr,
+                "close",
+                wraps=original_stderr_close,
+            ) as stderr_close,
+            self.assertRaises(BaseExceptionGroup) as raised,
+        ):
+            source._abort_started_process(original_failure)
+
+        self.assertEqual(
+            raised.exception.exceptions,
+            (original_failure, cleanup_failure),
+        )
+        stderr_close.assert_called_once_with()
+        self.assertEqual(source.state, "failed")
+        self.assertIs(source._process, process)
+        self.assertFalse(stdout.closed)
+        self.assertTrue(stderr.closed)
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertEqual(
+            source.receipt()["cleanup_code"],
+            "cleanup_failed",
+        )
+
+        source.close()
+        self.assertTrue(stdout.closed)
+        self.assertTrue(stderr.closed)
+        self.assertIsNone(source._process)
+        self.assertIsNone(source.receipt()["cleanup_code"])
+        self.assertIsNotNone(process.poll())
+
+    def test_descriptor_retry_never_resignals_confirmed_process_group(
+        self,
+    ) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None or process.stdout is None:
+            self.fail("started source has no stdout ownership")
+        stdout = process.stdout
+        original_close = stdout.close
+        original_killpg = os.killpg
+        cleanup_failure = KeyboardInterrupt(
+            "synthetic stdout close interrupt"
+        )
+        close_calls = 0
+
+        def interrupt_close_once() -> None:
+            nonlocal close_calls
+            close_calls += 1
+            if close_calls == 1:
+                raise cleanup_failure
+            original_close()
+
+        with (
+            patch.object(
+                stdout,
+                "close",
+                side_effect=interrupt_close_once,
+            ),
+            patch(
+                "alpr_runner.ffmpeg_io.os.killpg",
+                wraps=original_killpg,
+            ) as killpg,
+            self.assertRaises(KeyboardInterrupt) as raised,
+        ):
+            source.close()
+
+        self.assertIs(raised.exception, cleanup_failure)
+        term_calls = [
+            call
+            for call in killpg.call_args_list
+            if len(call.args) == 2 and call.args[1] == signal.SIGTERM
+        ]
+        self.assertEqual(len(term_calls), 1)
+        self.assertEqual(close_calls, 2)
+        self.assertEqual(source.state, "failed")
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertIsNone(source._process)
+        self.assertTrue(stdout.closed)
+        self.assertIsNotNone(process.poll())
+
+    def test_quiescence_publication_prevents_process_group_resignal(
+        self,
+    ) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        original_killpg = os.killpg
+        target = FfmpegFrameSource._terminate_and_reap
+        target_code = target.__code__
+        target_line = _source_line(
+            target,
+            'if group_status == "failed":',
+        )
+        interruption = KeyboardInterrupt(
+            "synthetic post-quiescence interrupt"
+        )
+
+        def interrupt_after_quiescence(
+            frame: object,
+            event: str,
+            _argument: object,
+        ) -> object:
+            if (
+                getattr(frame, "f_code", None) is target_code
+                and event == "line"
+                and getattr(frame, "f_lineno", None) == target_line
+            ):
+                sys.settrace(None)
+                raise interruption
+            return interrupt_after_quiescence
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.os.killpg",
+                    wraps=original_killpg,
+                ) as killpg,
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                sys.settrace(interrupt_after_quiescence)
+                source.close()
+        finally:
+            sys.settrace(None)
+
+        self.assertIs(raised.exception, interruption)
+        term_calls = [
+            call
+            for call in killpg.call_args_list
+            if len(call.args) == 2 and call.args[1] == signal.SIGTERM
+        ]
+        self.assertEqual(len(term_calls), 1)
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertIsNone(source._process)
+        self.assertIsNotNone(process.poll())
+
+    def test_poll_error_cannot_prevent_known_group_cleanup(self) -> None:
+        source = _source("import time; time.sleep(10)")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+
+        with patch.object(
+            process,
+            "poll",
+            side_effect=OSError("synthetic persistent poll failure"),
+        ):
+            source.close()
+
+        receipt = source.receipt()
+        self.assertEqual(source.state, "closed")
+        self.assertIs(receipt["process_reaped"], True)
+        self.assertIs(receipt["process_group_closed"], True)
+        self.assertIsNone(receipt["failure_code"])
+        self.assertIsNone(receipt["cleanup_code"])
+        self.assertEqual(receipt["termination"], "term")
+        self.assertIsNone(source._process)
+        self.assertIsNotNone(process.returncode)
+
+    def test_confirmed_closed_group_retry_only_reaps_leader(
+        self,
+    ) -> None:
+        source = _source(
+            "import signal, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "time.sleep(10)",
+            terminate_timeout=0.05,
+            kill_timeout=1.0,
+        )
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        original_wait = process.wait
+        wait_calls = 0
+
+        def fail_first_two_waits(*, timeout: float) -> int:
+            nonlocal wait_calls
+            wait_calls += 1
+            if wait_calls <= 2:
+                raise OSError("synthetic reap failure")
+            return original_wait(timeout=timeout)
+
+        with (
+            patch.object(
+                process,
+                "wait",
+                side_effect=fail_first_two_waits,
+            ),
+            self.assertRaises(FfmpegSupervisorError) as raised,
+        ):
+            source.close()
+
+        self.assertEqual(raised.exception.code, "cleanup_failed")
+        self.assertIs(source.receipt()["process_reaped"], False)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertEqual(source.receipt()["termination"], "kill")
+        self.assertIs(source._process, process)
+
+        original_killpg = os.killpg
+        with patch(
+            "alpr_runner.ffmpeg_io.os.killpg",
+            wraps=original_killpg,
+        ) as killpg:
+            source.close()
+
+        term_calls = [
+            call
+            for call in killpg.call_args_list
+            if len(call.args) == 2 and call.args[1] == signal.SIGTERM
+        ]
+        self.assertEqual(term_calls, [])
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertIsNone(source.receipt()["cleanup_code"])
+        self.assertIsNone(source._process)
+        self.assertIsNotNone(process.returncode)
+
+    def test_read_poll_error_fails_safe_and_reaps_known_group(self) -> None:
+        source = _source(
+            "import os, time; os.write(2, b'x'); time.sleep(10)"
+        )
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+
+        with (
+            patch.object(
+                process,
+                "poll",
+                side_effect=OSError("synthetic persistent poll failure"),
+            ),
+            self.assertRaises(FfmpegSupervisorError) as raised,
+        ):
+            source.read_frame()
+
+        receipt = source.receipt()
+        self.assertEqual(raised.exception.code, "io_failed")
+        self.assertEqual(source.state, "failed")
+        self.assertIs(receipt["process_reaped"], True)
+        self.assertIs(receipt["process_group_closed"], True)
+        self.assertIsNone(receipt["cleanup_code"])
+        self.assertNotEqual(receipt["termination"], "none")
+        self.assertIsNotNone(process.returncode)
+        self.assertNotIn(
+            "synthetic persistent poll failure",
+            str(raised.exception),
+        )
+
+        source.close()
+        self.assertIsNone(source._process)
+
+    def test_eof_finalization_poll_error_is_source_safe(self) -> None:
+        source = _source("pass")
+        source.start()
+        process = source._process
+        self.assertIsNotNone(process)
+        if process is None:
+            self.fail("started source has no process")
+        process.wait(timeout=1)
+        source._stdout_eof = True
+        source._stderr_eof = True
+        private_diagnostic = "synthetic private poll diagnostic"
+
+        with (
+            patch.object(
+                process,
+                "poll",
+                side_effect=[
+                    0,
+                    OSError(private_diagnostic),
+                    0,
+                ],
+            ),
+            self.assertRaises(FfmpegSupervisorError) as raised,
+        ):
+            source.read_frame()
+
+        self.assertEqual(raised.exception.code, "io_failed")
+        self.assertEqual(source.state, "failed")
+        self.assertIs(source.receipt()["process_reaped"], True)
+        self.assertIs(source.receipt()["process_group_closed"], True)
+        self.assertNotIn(private_diagnostic, str(raised.exception))
+
+        source.close()
+        self.assertIsNone(source._process)
+
+    def test_new_source_close_scrubs_private_inputs_before_terminal_state(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.57/private"
+        source = _private_command_source(private)
+        cleanup_failure = KeyboardInterrupt("synthetic scrub interrupt")
+        target_code = FfmpegFrameSource._close_once.__code__
+        source_lines, first_line = inspect.getsourcelines(
+            FfmpegFrameSource._close_once
+        )
+        state_assignment_line = next(
+            first_line + index
+            for index, line in enumerate(source_lines)
+            if line.strip() == 'self._state = "closed"'
+        )
+
+        def interrupt_before_terminal_state(
+            frame: object,
+            event: str,
+            _argument: object,
+        ) -> object:
+            if (
+                getattr(frame, "f_code", None) is target_code
+                and event == "line"
+                and getattr(frame, "f_lineno", None)
+                == state_assignment_line
+            ):
+                sys.settrace(None)
+                raise cleanup_failure
+            return interrupt_before_terminal_state
+
+        try:
+            with self.assertRaises(KeyboardInterrupt) as raised:
+                sys.settrace(interrupt_before_terminal_state)
+                source.close()
+        finally:
+            sys.settrace(None)
+
+        self.assertIs(raised.exception, cleanup_failure)
+        self.assertEqual(source.state, "new")
+        self.assertEqual(source._command, ())
+        self.assertIsNone(source._source)
+        self.assertNotIn(
+            private,
+            json.dumps(source.receipt(), sort_keys=True),
+        )
+
+        source.close()
+        self.assertEqual(source.state, "closed")
+
     def test_sigkill_requires_bounded_group_quiescence_confirmation(
         self,
     ) -> None:
@@ -674,6 +1438,448 @@ os._exit(0)
             json.dumps(source.receipt(), sort_keys=True),
         )
         self.assertIsNone(source.read_frame())
+
+    def test_interrupt_after_spawn_reaps_the_adopted_process_group(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.48/private"
+        source = _private_command_source(private)
+        process = _sleeping_child()
+        proxy = _InterruptingArgsProcess(process)
+
+        def return_spawned_process(
+            command: object,
+            **_kwargs: object,
+        ) -> _InterruptingArgsProcess:
+            process.args = command
+            return proxy
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.subprocess.Popen",
+                    side_effect=return_spawned_process,
+                ),
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                source.start()
+
+            receipt = source.receipt()
+            self.assertEqual(proxy.redaction_attempts, 2)
+            self.assertEqual(source.state, "failed")
+            self.assertEqual(receipt["failure_code"], "io_setup_failed")
+            self.assertIsNone(receipt["cleanup_code"])
+            self.assertIs(receipt["process_reaped"], True)
+            self.assertIs(receipt["process_group_closed"], True)
+            self.assertIn(receipt["termination"], {"term", "kill"})
+            self.assertIsNotNone(process.poll())
+            self.assertEqual(source._command, ())
+            self.assertIsNone(source._source)
+            self.assertIsNone(source._process)
+            self.assertEqual(
+                proxy.args,
+                ("<redacted-ffmpeg-command>",),
+            )
+            self.assertNotIn(private, str(raised.exception))
+            self.assertNotIn(private, repr(proxy.args))
+            self.assertNotIn(private, json.dumps(receipt, sort_keys=True))
+
+            source.close()
+            self.assertIsNotNone(process.poll())
+        finally:
+            _kill_if_running(process)
+
+    def test_one_shot_pid_interrupt_preserves_original_and_reaps_group(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.58/private"
+        source = _private_command_source(private)
+        process = _sleeping_child()
+        proxy = _InterruptingPidProcess(
+            process,
+            always_interrupt=False,
+        )
+
+        def return_spawned_process(
+            command: object,
+            **_kwargs: object,
+        ) -> _InterruptingPidProcess:
+            process.args = command
+            return proxy
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.subprocess.Popen",
+                    side_effect=return_spawned_process,
+                ),
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                source.start()
+
+            receipt = source.receipt()
+            self.assertIs(raised.exception, proxy.interruption)
+            self.assertEqual(proxy.pid_reads, 2)
+            self.assertEqual(source.state, "failed")
+            self.assertIs(receipt["process_reaped"], True)
+            self.assertIs(receipt["process_group_closed"], True)
+            self.assertIsNone(receipt["cleanup_code"])
+            self.assertIsNone(source._process)
+            self.assertEqual(source._command, ())
+            self.assertIsNone(source._source)
+            self.assertIsNotNone(process.poll())
+            self.assertNotIn(private, repr(process.args))
+            self.assertNotIn(
+                private,
+                json.dumps(receipt, sort_keys=True),
+            )
+        finally:
+            _kill_if_running(process)
+
+    def test_persistent_pid_interrupt_reaps_leader_without_group_claim(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.59/private"
+        source = _private_command_source(private)
+        process = _sleeping_child()
+        proxy = _InterruptingPidProcess(
+            process,
+            always_interrupt=True,
+        )
+
+        def return_spawned_process(
+            command: object,
+            **_kwargs: object,
+        ) -> _InterruptingPidProcess:
+            process.args = command
+            return proxy
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.subprocess.Popen",
+                    side_effect=return_spawned_process,
+                ),
+                self.assertRaises(BaseExceptionGroup) as raised,
+            ):
+                source.start()
+
+            primary, cleanup = raised.exception.exceptions
+            receipt = source.receipt()
+            self.assertIs(primary, proxy.interruption)
+            self.assertIsInstance(cleanup, FfmpegSupervisorError)
+            self.assertEqual(cleanup.code, "cleanup_failed")  # type: ignore[union-attr]
+            self.assertGreaterEqual(proxy.pid_reads, 2)
+            self.assertEqual(source.state, "failed")
+            self.assertIs(receipt["process_reaped"], True)
+            self.assertIs(receipt["process_group_closed"], False)
+            self.assertEqual(
+                receipt["cleanup_code"],
+                "cleanup_failed",
+            )
+            self.assertIs(source._process, proxy)
+            self.assertEqual(source._command, ())
+            self.assertIsNone(source._source)
+            self.assertIsNotNone(process.poll())
+            public = str(raised.exception) + json.dumps(
+                receipt,
+                sort_keys=True,
+            )
+            self.assertNotIn(private, public)
+            self.assertNotIn("fixture-value", public)
+        finally:
+            _kill_if_running(process)
+
+    def test_pending_sigint_is_delivered_only_after_process_adoption(
+        self,
+    ) -> None:
+        if not hasattr(signal, "pthread_kill"):
+            self.skipTest("pthread_kill is unavailable")
+        original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+        if signal.SIGINT in original_mask:
+            self.skipTest("SIGINT was already blocked by the test host")
+
+        private = "rtsp://viewer:fixture-value@192.0.2.49/private"
+        source = _private_command_source(private)
+        process = _sleeping_child()
+        proxy = _InterruptingArgsProcess(
+            process,
+            interrupt_first_redaction=False,
+        )
+        observed_mask: set[signal.Signals] | None = None
+
+        def spawn_and_queue_sigint(
+            command: object,
+            **_kwargs: object,
+        ) -> _InterruptingArgsProcess:
+            nonlocal observed_mask
+            process.args = command
+            observed_mask = signal.pthread_sigmask(
+                signal.SIG_BLOCK,
+                set(),
+            )
+            signal.pthread_kill(threading.get_ident(), signal.SIGINT)
+            return proxy
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.subprocess.Popen",
+                    side_effect=spawn_and_queue_sigint,
+                ),
+                self.assertRaises(KeyboardInterrupt),
+            ):
+                source.start()
+
+            restored_mask = signal.pthread_sigmask(
+                signal.SIG_BLOCK,
+                set(),
+            )
+            receipt = source.receipt()
+            self.assertIsNotNone(observed_mask)
+            self.assertIn(signal.SIGINT, observed_mask or set())
+            self.assertEqual(restored_mask, original_mask)
+            self.assertEqual(proxy.redaction_attempts, 2)
+            self.assertEqual(
+                proxy.args,
+                ("<redacted-ffmpeg-command>",),
+            )
+            self.assertIsNone(source._process)
+            self.assertIs(receipt["process_reaped"], True)
+            self.assertIs(receipt["process_group_closed"], True)
+            self.assertIsNotNone(process.poll())
+            self.assertNotIn(private, repr(proxy.args))
+            self.assertNotIn(private, json.dumps(receipt, sort_keys=True))
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+            _kill_if_running(process)
+
+    def test_signal_mask_is_restored_if_blocking_call_raises_after_mutation(
+        self,
+    ) -> None:
+        original_call = signal.pthread_sigmask
+        original_mask = original_call(signal.SIG_BLOCK, set())
+        calls = 0
+
+        def mutate_then_fail(
+            how: signal.Sigmasks,
+            mask: set[signal.Signals],
+        ) -> set[signal.Signals]:
+            nonlocal calls
+            calls += 1
+            result = original_call(how, mask)
+            if calls == 2:
+                raise RuntimeError("synthetic post-mutation failure")
+            return result
+
+        source = _source("raise SystemExit(0)")
+        restored_mask: set[signal.Signals] | None = None
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.signal.pthread_sigmask",
+                    side_effect=mutate_then_fail,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+            restored_mask = original_call(signal.SIG_BLOCK, set())
+        finally:
+            original_call(signal.SIG_SETMASK, original_mask)
+
+        self.assertEqual(calls, 3)
+        self.assertEqual(restored_mask, original_mask)
+        self.assertEqual(raised.exception.code, "spawn_failed")
+        self.assertIsNone(raised.exception.__context__)
+        self.assertEqual(source.state, "failed")
+
+    def test_interrupted_signal_mask_restoration_is_retried_exactly(
+        self,
+    ) -> None:
+        cases = (
+            (
+                FfmpegFrameSource._start_once,
+                "self._restore_start_signal_mask()",
+            ),
+            (
+                FfmpegFrameSource._restore_start_signal_mask,
+                "self._start_signal_mask = None",
+            ),
+        )
+        original_call = signal.pthread_sigmask
+
+        for function, source_text in cases:
+            with self.subTest(boundary=source_text):
+                original_mask = original_call(signal.SIG_BLOCK, set())
+                source = _source("import time; time.sleep(10)")
+                target_code = function.__code__
+                target_line = _source_line(function, source_text)
+                interruption = SystemExit(
+                    f"synthetic mask interrupt: {source_text}"
+                )
+                restored_mask: set[signal.Signals] | None = None
+
+                def interrupt_once(
+                    frame: object,
+                    event: str,
+                    _argument: object,
+                ) -> object:
+                    if (
+                        getattr(frame, "f_code", None) is target_code
+                        and event == "line"
+                        and getattr(frame, "f_lineno", None) == target_line
+                    ):
+                        sys.settrace(None)
+                        raise interruption
+                    return interrupt_once
+
+                try:
+                    with self.assertRaises(SystemExit) as raised:
+                        sys.settrace(interrupt_once)
+                        source.start()
+                    restored_mask = original_call(
+                        signal.SIG_BLOCK,
+                        set(),
+                    )
+                finally:
+                    sys.settrace(None)
+                    original_call(signal.SIG_SETMASK, original_mask)
+
+                self.assertIs(raised.exception, interruption)
+                self.assertEqual(restored_mask, original_mask)
+                self.assertIsNone(source._start_signal_mask)
+                self.assertEqual(source.state, "failed")
+                self.assertIs(
+                    source.receipt()["process_reaped"],
+                    True,
+                )
+                self.assertIs(
+                    source.receipt()["process_group_closed"],
+                    True,
+                )
+                self.assertIsNone(source._process)
+
+    def test_interrupt_on_successful_start_return_cannot_orphan_child(
+        self,
+    ) -> None:
+        injected_errors = (
+            ("keyboard", KeyboardInterrupt()),
+            (
+                "supervisor",
+                FfmpegSupervisorError(
+                    "io_setup_failed",
+                    {"source": {"kind": "rtsp"}},
+                ),
+            ),
+        )
+        target_code = FfmpegFrameSource._start_once.__code__
+
+        for suffix, injected_error in injected_errors:
+            with self.subTest(error=suffix):
+                private = (
+                    "rtsp://viewer:fixture-value@192.0.2.51/"
+                    f"private-{suffix}"
+                )
+                source = _private_command_source(private)
+                process = _sleeping_child()
+
+                def return_spawned_process(
+                    command: object,
+                    **_kwargs: object,
+                ) -> subprocess.Popen[bytes]:
+                    process.args = command
+                    return process
+
+                def interrupt_return(
+                    frame: object,
+                    event: str,
+                    _argument: object,
+                ) -> object:
+                    if (
+                        getattr(frame, "f_code", None) is target_code
+                        and event == "return"
+                    ):
+                        sys.settrace(None)
+                        raise injected_error
+                    return interrupt_return
+
+                try:
+                    with self.assertRaises(type(injected_error)) as raised:
+                        with patch(
+                            "alpr_runner.ffmpeg_io.subprocess.Popen",
+                            side_effect=return_spawned_process,
+                        ):
+                            sys.settrace(interrupt_return)
+                            source.start()
+
+                    receipt = source.receipt()
+                    self.assertIs(raised.exception, injected_error)
+                    self.assertEqual(source.state, "failed")
+                    self.assertIs(receipt["process_reaped"], True)
+                    self.assertIs(receipt["process_group_closed"], True)
+                    self.assertIsNone(source._process)
+                    self.assertIsNotNone(process.poll())
+                    self.assertNotIn(
+                        private,
+                        json.dumps(receipt, sort_keys=True),
+                    )
+                    self.assertNotIn(private, repr(process.args))
+                finally:
+                    sys.settrace(None)
+                    _kill_if_running(process)
+
+    def test_redaction_exception_is_sanitized_after_bounded_cleanup(
+        self,
+    ) -> None:
+        private = "rtsp://viewer:fixture-value@192.0.2.50/private"
+        source = _private_command_source(private)
+        process = _sleeping_child()
+        proxy = _InterruptingArgsProcess(
+            process,
+            first_redaction_error=RuntimeError(
+                f"cannot redact {private}"
+            ),
+        )
+
+        def return_spawned_process(
+            command: object,
+            **_kwargs: object,
+        ) -> _InterruptingArgsProcess:
+            process.args = command
+            return proxy
+
+        try:
+            with (
+                patch(
+                    "alpr_runner.ffmpeg_io.subprocess.Popen",
+                    side_effect=return_spawned_process,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            receipt = raised.exception.receipt()
+            self.assertEqual(raised.exception.code, "io_setup_failed")
+            self.assertIsNone(raised.exception.__context__)
+            self.assertIsNone(raised.exception.__cause__)
+            self.assertEqual(proxy.redaction_attempts, 2)
+            self.assertEqual(
+                proxy.args,
+                ("<redacted-ffmpeg-command>",),
+            )
+            self.assertIsNone(source._process)
+            self.assertIs(receipt["process_reaped"], True)
+            self.assertIs(receipt["process_group_closed"], True)
+            self.assertIsNotNone(process.poll())
+            public = (
+                str(raised.exception)
+                + json.dumps(receipt, sort_keys=True)
+                + repr(proxy.args)
+            )
+            self.assertNotIn(private, public)
+            self.assertNotIn("fixture-value", public)
+        finally:
+            _kill_if_running(process)
 
     def test_constructor_rejects_unsafe_or_ambiguous_configuration(
         self,

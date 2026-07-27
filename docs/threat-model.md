@@ -54,6 +54,21 @@ memory-safety defect in the SDK can compromise the runner.
   native call. Native buffers have no implicit trailing byte and stay paired
   with their immutable payload by callback timestamp, never by a global
   "latest frame" fallback.
+- The production `ffmpeg_video` raw-RGB path uses the bounded supervisor
+  directly. Frame geometry and timeout/stderr limits are validated before
+  runtime-directory or native-library side effects; startup and inter-frame
+  progress have separate deadlines; stderr bytes are capped and never copied
+  into status, receipts, or public exceptions.
+- In that raw-RGB path, FFmpeg runs in a dedicated process group with stdin
+  disabled. Shutdown must confirm producer reaping and group quiescence before
+  DTK destruction, and DTK destruction must succeed before frame leases are
+  released. Body and cleanup failures are preserved together rather than
+  replacing one another.
+- The main-thread raw-RGB runner converts `SIGINT` and `SIGTERM` into a
+  reentrant, lock-free stop flag. The supervisor observes that flag on bounded
+  polling intervals, performs the same source-to-DTK-to-lease teardown, and
+  restores the caller's previous signal handlers. Repeated signals do not call
+  `threading.Event.set()` from the Python signal handler.
 - Video-frame leases are bounded by both count and retained bytes. The default
   is 16 leases and a 96 MiB ceiling; payloads borrowed by overlapping plate
   callbacks remain charged after completion until the final exact borrow is
@@ -61,6 +76,10 @@ memory-safety defect in the SDK can compromise the runner.
 - Exceptions at the `ctypes` callback boundary are contained as stable,
   source-free failure codes, request an ingestion stop, and cannot bypass the
   exact-once native plate-destruction path.
+- Expected SDK initialization failures, including the default license check,
+  destroy any allocated engine and parameter handles. A failure while
+  registering the completed-frame callback rolls back both the inert FFmpeg
+  source and the native owner before constructor failure is published.
 - Runtime directories and vendor directories have dedicated ignore rules.
 - The runner stops when the SDK reports an unlicensed state unless the operator
   explicitly enables the development-only override.
@@ -80,12 +99,25 @@ memory-safety defect in the SDK can compromise the runner.
 
 ## Known gaps
 
-- Camera URLs are command-line arguments and may appear in process listings.
-- FFmpeg diagnostics are not yet scrubbed and may repeat its input URL.
+- Camera URLs are command-line arguments and remain visible in the runner and
+  FFmpeg OS process arguments. The supervisor prevents those arguments and
+  FFmpeg diagnostic contents from entering its receipts or exceptions, but it
+  is not a credential provider or process-list privacy boundary.
 - Runtime status records and images still contain recognition data.
 - The dashboard has no authentication, authorization, TLS, CSRF defense,
   retention control, or response-security headers.
-- FFmpeg and native SDK stderr are not consistently bounded or sanitized.
+- Other FFmpeg launch paths do not yet share the raw-RGB supervisor contract.
+  In particular, the dashboard snapshot path still captures FFmpeg stderr
+  without the same explicit timeout and byte cap.
+- Diagnostics written directly by the proprietary in-process SDK also remain
+  outside the FFmpeg supervisor's bounded stderr contract.
+- The graceful-interruption contract covers ordinary synchronous exceptions
+  and real process `SIGINT`/`SIGTERM` after the main-thread runner installs its
+  handlers. It cannot make instruction-level atomicity guarantees against
+  `SIGKILL`, `os._exit`, interpreter/native crashes, or artificial
+  `PyThreadState`/trace-hook exception injection between arbitrary CPython
+  bytecodes. Standalone supervisor callers remain responsible for calling
+  `close()` if their own control flow abandons a live source.
 - Plate aggregation keeps plaintext plate keys in memory and on disk.
 - The SDK system identifier may be printed by existing launch paths.
 - The proprietary SDK's callback ABI, timestamp propagation, frame-ownership
@@ -123,8 +155,10 @@ capture.
 - Redacted source descriptors at every log and status boundary.
 - Private-mode, atomic runtime storage with an explicit retention command.
 - Opt-in exposure of full plate text, disabled for portfolio evidence.
-- Production integration of the bounded, timeout-aware FFmpeg supervisor and
-  its process-group cleanup receipts.
+- A camera credential provider or descriptor-based FFmpeg input boundary that
+  does not place authenticated RTSP URLs in OS process arguments.
+- Migrate the dashboard snapshot and any remaining FFmpeg launch paths to the
+  same bounded supervision and source-safe diagnostic contract.
 - Strict request routing and security headers for the dashboard.
 - Licensed-device conformance tests for the documented DTK ownership and
   callback-order assumptions; offline tests use opaque fake handles and prove

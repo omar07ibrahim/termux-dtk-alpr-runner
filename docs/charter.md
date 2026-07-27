@@ -14,7 +14,10 @@ model.
 ## Implemented
 
 - Python `ctypes` bindings for the DTK image and video interfaces used here.
-- FFmpeg raw-RGB frame delivery over a pipe.
+- Production FFmpeg raw-RGB delivery through the bounded supervisor: strict
+  frame geometry, startup and inter-frame deadlines, a private stderr cap,
+  stable source-safe receipts, reentrant `SIGINT`/`SIGTERM` stop handling, and
+  confirmed process-group cleanup before native teardown.
 - A multi-camera worker model with per-camera recognition engines.
 - Cross-camera plate aggregation and software zoom targeting.
 - A strict, deterministic fake-event CLI that reuses the production
@@ -23,7 +26,8 @@ model.
 - Private-mode runtime directories and files with redacted source descriptors.
 - Exact-ID RGB frame leases with count and byte backpressure, opaque-handle
   callback tests, sanitized callback failures, and no latest-frame preview
-  fallback.
+  fallback. Expected license and callback-registration failures roll back
+  partially constructed native owners.
 - A reproducible evidence renderer with two byte-identical CLI runs, bounded
   subprocess streams, exact generated-tree checks, source hashes, privacy
   scans, accessible SVG validation, and manifest-last publication.
@@ -69,13 +73,15 @@ Before a release is described as reproducible, the repository must have:
 9. a declared license for the repository-owned source.
 
 The event-level evidence bundle now covers criterion 2, part of 6, part of 7,
-and criterion 8 for its vendor-independent boundary. Frame-buffer ownership is
-count- and byte-bounded in the repository-owned wrapper, while the licensed
-SDK contract still requires device conformance. Criterion 5 is not complete
-because the repository-owned fixture has no granted redistribution license
-yet. The bundle does not make the broader camera/SDK project reproducible: the
-dependency contract, production integration of bounded media supervision,
-dashboard evidence, failure-path coverage, and repository license remain
+and criterion 8 for its vendor-independent boundary. Repository-owned FFmpeg
+supervision and frame-buffer ownership now cover the raw-RGB runner's portion
+of criterion 3 with bounded, fail-closed contracts and focused offline tests;
+other FFmpeg launch paths and licensed-device ownership/callback-quiescence
+assumptions still require hardening or conformance testing. Criterion 5 is not
+complete because the repository-owned fixture has no granted redistribution
+license yet. The bundle does not make the broader camera/SDK project
+reproducible: the dependency contract, dashboard evidence, remaining
+subprocess and licensed-device failure paths, and repository license remain
 release work.
 
 ## Evidence policy

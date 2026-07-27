@@ -168,6 +168,7 @@ class FfmpegFrameSource:
         self._stdout_eof = False
         self._stderr_eof = False
         self._started_at: float | None = None
+        self._start_signal_mask: set[signal.Signals] | None = None
 
     @property
     def spec(self) -> FrameSpec:
@@ -184,54 +185,226 @@ class FfmpegFrameSource:
             return self
         if self._state != "new":
             raise RuntimeError("ffmpeg frame source cannot be restarted")
-        if os.name != "posix" or not hasattr(os, "killpg"):
+        if (
+            os.name != "posix"
+            or not hasattr(os, "killpg")
+            or not hasattr(signal, "pthread_sigmask")
+        ):
             self._raise_failure("unsupported_platform")
 
         start_requested_at = time.monotonic()
-        process: subprocess.Popen[bytes] | None = None
         try:
-            process = subprocess.Popen(
-                self._command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0,
-                start_new_session=True,
-                close_fds=True,
-            )
-        except (OSError, subprocess.SubprocessError, ValueError):
-            pass
-        if process is None:
-            self._raise_failure("spawn_failed")
-        assert process.stdout is not None
-        assert process.stderr is not None
+            return self._start_once(start_requested_at)
+        except BaseException as error:
+            mask_failure: BaseException | None = None
+            try:
+                self._restore_start_signal_mask()
+            except BaseException as restore_error:
+                mask_failure = restore_error
+            if mask_failure is not None:
+                error = BaseExceptionGroup(
+                    "ffmpeg start and signal-mask restoration failures",
+                    [error, mask_failure],
+                )
+            # Failures raised from the guarded helper after adoption cannot
+            # unwind past an owned live child.
+            if (
+                self._process is not None
+                and self._state in {"new", "running"}
+            ):
+                self._abort_started_process(error)
+            if mask_failure is not None:
+                raise error
+            raise
 
-        process.args = ("<redacted-ffmpeg-command>",)
-        self._command = ()
-        self._source = None
+    def _start_once(self, start_requested_at: float) -> FfmpegFrameSource:
+        """Spawn, adopt, configure, and return under the caller's guard."""
+
+        process: subprocess.Popen[bytes] | None = None
+        failure_code: str | None = None
+        interruption: BaseException | None = None
+        try:
+            # Block SIGINT only across spawn and setup ownership. Restoring the
+            # calling thread's exact mask after the process, pipes, and selector
+            # are all recorded delivers any pending KeyboardInterrupt inside
+            # this protected try block, where bounded cleanup owns everything.
+            previous_mask = signal.pthread_sigmask(
+                signal.SIG_BLOCK,
+                set(),
+            )
+            self._start_signal_mask = set(previous_mask)
+            try:
+                signal.pthread_sigmask(
+                    signal.SIG_BLOCK,
+                    {signal.SIGINT},
+                )
+                process = subprocess.Popen(
+                    self._command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=0,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+                self._adopt_started_process(process, start_requested_at)
+                process.args = ("<redacted-ffmpeg-command>",)
+
+                if process.stdout is None or process.stderr is None:
+                    raise RuntimeError("ffmpeg pipes were not created")
+                os.set_blocking(process.stdout.fileno(), False)
+                os.set_blocking(process.stderr.fileno(), False)
+                selector = selectors.DefaultSelector()
+                self._selector = selector
+                selector.register(
+                    process.stdout,
+                    selectors.EVENT_READ,
+                    "stdout",
+                )
+                selector.register(
+                    process.stderr,
+                    selectors.EVENT_READ,
+                    "stderr",
+                )
+            finally:
+                self._restore_start_signal_mask()
+        except Exception:
+            failure_code = (
+                "spawn_failed" if process is None else "io_setup_failed"
+            )
+        except BaseException as error:
+            interruption = error
+
+        # Leave the originating exception handler before publishing any safe
+        # supervisor error. That prevents private Popen diagnostics from
+        # surviving as an exception context even though traceback display
+        # would otherwise suppress them with ``from None``.
+        if failure_code is not None:
+            if process is None:
+                self._raise_failure(failure_code)
+            if self._process is None:
+                self._adopt_started_process(process, start_requested_at)
+            self._abort_started_process(None)
+        if interruption is not None:
+            if process is None:
+                raise interruption
+            if self._process is None:
+                self._adopt_started_process(process, start_requested_at)
+            self._abort_started_process(interruption)
+        return self
+
+    def _restore_start_signal_mask(self) -> None:
+        previous_mask = self._start_signal_mask
+        if previous_mask is None:
+            return
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        # Clear ownership only after the exact restoration returns. An
+        # asynchronous exception before this assignment leaves an idempotent
+        # retry record for start()'s outer guard.
+        self._start_signal_mask = None
+
+    def _adopt_started_process(
+        self,
+        process: subprocess.Popen[bytes],
+        started_at: float,
+    ) -> None:
+        """Record enough ownership to clean a child from every later path."""
+
         self._process = process
+        # Publish ownership before reading any property on the returned
+        # process. If even PID access raises, the outer guard and close() still
+        # know that a child must be terminated rather than treating this as an
+        # untouched source.
+        self._state = "running"
         self._process_reaped = False
         self._process_group_closed = False
-        self._started_at = start_requested_at
-        # start_new_session=True makes the child's PID its process-group ID.
-        # Capturing that invariant avoids a racy os.getpgid(process.pid).
-        self._pgid = process.pid
-        setup_failed = False
-        try:
-            os.set_blocking(process.stdout.fileno(), False)
-            os.set_blocking(process.stderr.fileno(), False)
-            selector = selectors.DefaultSelector()
-            self._selector = selector
-            selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-            selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-        except (KeyError, OSError, ValueError):
-            setup_failed = True
-        if setup_failed:
-            self._state = "running"
-            self._raise_failure("io_setup_failed")
+        self._started_at = started_at
+        self._command = ()
+        self._source = None
+        self._capture_process_group_id(process)
 
-        self._state = "running"
-        return self
+    def _capture_process_group_id(
+        self,
+        process: subprocess.Popen[bytes],
+    ) -> None:
+        """Capture the start_new_session PID/PGID invariant exactly once."""
+
+        if self._pgid is not None:
+            return
+        pid = process.pid
+        if type(pid) is not int or pid <= 0:
+            raise ValueError("ffmpeg process PID is invalid")
+        self._pgid = pid
+
+    def _abort_started_process(
+        self,
+        original_error: BaseException | None,
+        *,
+        failure_code: str = "io_setup_failed",
+    ) -> NoReturn:
+        """Reap an adopted child before surfacing a safe primary failure."""
+
+        self._failure_code = failure_code
+        cleanup_code: str | None = None
+        cleanup_failures: list[BaseException] = []
+        process = self._process
+        if process is not None:
+            try:
+                # An asynchronous exception may have interrupted the first
+                # assignment itself. Retry without allowing redaction failure
+                # to replace the original control-flow exception.
+                process.args = ("<redacted-ffmpeg-command>",)
+            except BaseException:
+                pass
+        if not (
+            self._process_reaped is True
+            and self._process_group_closed is True
+        ):
+            try:
+                cleanup_code = self._terminate_and_reap()
+                self._cleanup_code = cleanup_code
+            except BaseException as cleanup_error:
+                self._cleanup_code = "cleanup_failed"
+                cleanup_failures.append(cleanup_error)
+        else:
+            # Never signal a numeric PGID again after both the leader and its
+            # group were confirmed gone. Descriptor-only retries must not risk
+            # targeting an unrelated group if the kernel has reused that ID.
+            self._cleanup_code = None
+        io_closed = False
+        try:
+            self._close_io()
+            io_closed = True
+        except BaseException as cleanup_error:
+            self._cleanup_code = "cleanup_failed"
+            cleanup_failures.append(cleanup_error)
+        self._state = "failed"
+        if (
+            self._process_reaped is True
+            and self._process_group_closed is True
+            and io_closed
+        ):
+            self._drop_quiesced_process_reference()
+
+        if cleanup_code is not None:
+            cleanup_failures.insert(
+                0,
+                FfmpegSupervisorError(cleanup_code, self.receipt()),
+            )
+        primary_error = (
+            original_error
+            if original_error is not None
+            else FfmpegSupervisorError(
+                failure_code,
+                self.receipt(),
+            )
+        )
+        if cleanup_failures:
+            raise BaseExceptionGroup(
+                "ffmpeg setup and cleanup failures",
+                [primary_error, *cleanup_failures],
+            ) from None
+        raise primary_error
 
     def read_frame(
         self, stop_event: threading.Event | None = None
@@ -287,7 +460,7 @@ class FfmpegFrameSource:
             now = time.monotonic()
             process = self._require_process()
             if self._stdout_eof and self._stderr_eof:
-                if process.poll() is None:
+                if self._poll_or_fail(process) is None:
                     wait_seconds = min(max(0.0, deadline - now), 0.05)
                     wait_timed_out = False
                     wait_failed = False
@@ -337,7 +510,7 @@ class FfmpegFrameSource:
 
             # poll() also reaps a child that has already exited. Pipe EOF still
             # must be consumed first so an oversized stderr cannot be ignored.
-            process.poll()
+            self._poll_or_fail(process)
             if not events and time.monotonic() >= deadline:
                 self._raise_failure(timeout_code)
             if (
@@ -394,15 +567,44 @@ class FfmpegFrameSource:
     def close(self) -> None:
         """Terminate, escalate if needed, reap, and close every descriptor."""
 
+        try:
+            self._close_once()
+        except BaseException as error:
+            if (
+                isinstance(error, FfmpegSupervisorError)
+                and self._state == "failed"
+            ):
+                raise
+            if (
+                self._process is not None
+                and self._state != "closed"
+            ):
+                self._abort_started_process(
+                    error,
+                    failure_code=self._failure_code or "cleanup_failed",
+                )
+            raise
+
+    def _close_once(self) -> None:
+        """Perform one close attempt under :meth:`close`'s recovery guard."""
+
         if self._state == "closed":
             return
         if self._state == "new":
-            self._state = "closed"
-            self._command = ()
-            self._source = None
-            return
+            if self._process is None:
+                self._command = ()
+                self._source = None
+                # Publish the terminal state only after every private input
+                # has been scrubbed. A control-flow exception before this
+                # assignment leaves the source retryable.
+                self._state = "closed"
+                return
+            # A BaseException may have interrupted process adoption between
+            # storing the Popen owner and publishing the running state.
+            self._state = "running"
         if self._state == "ended":
             self._close_io()
+            self._drop_quiesced_process_reference()
             return
         if self._state == "failed":
             if (
@@ -421,6 +623,8 @@ class FfmpegFrameSource:
                     ) from None
             else:
                 self._close_io()
+            self._cleanup_code = None
+            self._drop_quiesced_process_reference()
             return
 
         cleanup_code = self._terminate_and_reap()
@@ -432,7 +636,21 @@ class FfmpegFrameSource:
             raise FfmpegSupervisorError(
                 cleanup_code, self.receipt()
             ) from None
+        self._drop_quiesced_process_reference()
         self._state = "closed"
+
+    def _drop_quiesced_process_reference(self) -> None:
+        """Drop private process metadata only after every cleanup stage."""
+
+        if (
+            self._process_reaped is True
+            and self._process_group_closed is True
+        ):
+            # No retry is needed after confirmed quiescence and descriptor
+            # cleanup. Dropping the Popen reference also removes any command
+            # value that an unusual object refused to redact.
+            self._process = None
+            self._pgid = None
 
     def __enter__(self) -> FfmpegFrameSource:
         return self.start()
@@ -446,7 +664,7 @@ class FfmpegFrameSource:
         del exc_type, traceback
         try:
             self.close()
-        except FfmpegSupervisorError as cleanup_error:
+        except BaseException as cleanup_error:
             if exc is None:
                 raise
             raise BaseExceptionGroup(
@@ -476,6 +694,15 @@ class FfmpegFrameSource:
         self._frame_buffer.extend(chunk)
         self._stdout_bytes += len(chunk)
         return True
+
+    def _poll_or_fail(
+        self,
+        process: subprocess.Popen[bytes],
+    ) -> int | None:
+        try:
+            return process.poll()
+        except (OSError, subprocess.SubprocessError):
+            self._raise_failure("io_failed")
 
     def _read_stderr(self, stream: Any) -> None:
         remaining = self._stderr_limit - len(self._stderr_buffer)
@@ -514,8 +741,28 @@ class FfmpegFrameSource:
             self._stderr_eof = True
 
     def _finish_after_eof(self) -> None:
+        try:
+            self._finish_after_eof_once()
+        except BaseException as error:
+            if (
+                isinstance(error, FfmpegSupervisorError)
+                and self._state == "failed"
+            ):
+                raise
+            if self._process is not None:
+                self._abort_started_process(
+                    error,
+                    failure_code=self._failure_code or "cleanup_failed",
+                )
+            self._failure_code = self._failure_code or "cleanup_failed"
+            self._state = "failed"
+            raise
+
+    def _finish_after_eof_once(self) -> None:
+        """Finalize clean EOF under :meth:`_finish_after_eof`'s guard."""
+
         process = self._require_process()
-        return_code = process.poll()
+        return_code = self._poll_or_fail(process)
         if return_code is None:
             return
         self._exit_code = int(return_code)
@@ -533,27 +780,68 @@ class FfmpegFrameSource:
             ) from None
         self._state = "ended"
         self._close_io()
+        self._drop_quiesced_process_reference()
 
     def _raise_failure(self, code: str) -> NoReturn:
         self._failure_code = code
+        cleanup_failures: list[BaseException] = []
         if self._process is not None:
-            cleanup_code = self._terminate_and_reap()
-            self._cleanup_code = cleanup_code
-        self._close_io()
+            try:
+                cleanup_code = self._terminate_and_reap()
+                self._cleanup_code = cleanup_code
+            except BaseException as cleanup_error:
+                self._cleanup_code = "cleanup_failed"
+                cleanup_failures.append(cleanup_error)
+        try:
+            self._close_io()
+        except BaseException as cleanup_error:
+            self._cleanup_code = "cleanup_failed"
+            cleanup_failures.append(cleanup_error)
         self._state = "failed"
-        raise FfmpegSupervisorError(code, self.receipt()) from None
+        primary_error = FfmpegSupervisorError(code, self.receipt())
+        if cleanup_failures:
+            raise BaseExceptionGroup(
+                "ffmpeg failure and cleanup failures",
+                [primary_error, *cleanup_failures],
+            ) from None
+        raise primary_error from None
 
     def _terminate_and_reap(self) -> str | None:
         process = self._process
         if process is None:
             return None
-        return_code = process.poll()
+        if self._pgid is None:
+            try:
+                self._capture_process_group_id(process)
+            except BaseException:
+                return self._terminate_without_process_group_id(process)
+        try:
+            return_code = process.poll()
+        except (OSError, subprocess.SubprocessError):
+            # A known start_new_session PGID is sufficient for bounded group
+            # cleanup. Treat an unreliable leader poll as "status unknown"
+            # instead of abandoning a live child before signalling it.
+            return_code = None
         if return_code is not None:
             self._exit_code = int(return_code)
             self._process_reaped = True
 
-        if self._pgid is None:
-            return "cleanup_failed"
+        assert self._pgid is not None
+        if self._process_group_closed is True:
+            # Group quiescence is a terminal fact about this numeric PGID.
+            # If only leader reaping remains, never signal the identifier
+            # again: the kernel may already have reused it for another group.
+            if return_code is None:
+                try:
+                    return_code = process.wait(timeout=self._kill_timeout)
+                except subprocess.TimeoutExpired:
+                    return "reap_timeout"
+                except (OSError, subprocess.SubprocessError):
+                    return "cleanup_failed"
+                self._exit_code = int(return_code)
+                self._process_reaped = True
+            return None
+
         term_started = time.monotonic()
         try:
             os.killpg(self._pgid, signal.SIGTERM)
@@ -570,7 +858,9 @@ class FfmpegFrameSource:
             except subprocess.TimeoutExpired:
                 term_timed_out = True
             except (OSError, subprocess.SubprocessError):
-                return "cleanup_failed"
+                # A failed leader wait does not revoke known PGID ownership.
+                # Escalate and confirm the group before reporting cleanup.
+                return self._kill_and_reap(process)
             if term_timed_out:
                 return self._kill_and_reap(process)
             assert return_code is not None
@@ -605,6 +895,50 @@ class FfmpegFrameSource:
         self._exit_code = int(return_code)
         self._process_reaped = True
         return None
+
+    def _terminate_without_process_group_id(
+        self,
+        process: subprocess.Popen[bytes],
+    ) -> str:
+        """Bound leader cleanup without claiming unknown group quiescence."""
+
+        self._process_group_closed = False
+        return_code: int | None = None
+        try:
+            polled = process.poll()
+            if polled is not None:
+                return_code = int(polled)
+        except BaseException:
+            pass
+
+        if return_code is None:
+            try:
+                process.terminate()
+                self._termination = "term"
+            except BaseException:
+                pass
+            try:
+                waited = process.wait(timeout=self._terminate_timeout)
+                return_code = int(waited)
+            except BaseException:
+                try:
+                    process.kill()
+                    self._termination = "kill"
+                except BaseException:
+                    pass
+                try:
+                    waited = process.wait(timeout=self._kill_timeout)
+                    return_code = int(waited)
+                except BaseException:
+                    return_code = None
+
+        if return_code is not None:
+            self._exit_code = return_code
+            self._process_reaped = True
+        # The leader may be reaped, but without the start_new_session PGID the
+        # supervisor cannot honestly prove that descendants are gone. Retain
+        # the owner and surface a safe cleanup failure for later retry.
+        return "cleanup_failed"
 
     def _kill_and_reap(
         self, process: subprocess.Popen[bytes]
@@ -656,37 +990,53 @@ class FfmpegFrameSource:
             try:
                 os.killpg(self._pgid, 0)
             except ProcessLookupError:
-                return "quiescent"
+                self._process_group_closed = True; return "quiescent"
             except OSError:
                 return "failed"
             if sys.platform.startswith("linux"):
                 live_members = _linux_group_has_live_members(self._pgid)
                 if live_members is False:
-                    return "quiescent"
+                    self._process_group_closed = True; return "quiescent"
             if time.monotonic() >= deadline:
                 return "running"
             time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
 
     def _close_io(self) -> None:
+        close_failures: list[BaseException] = []
         selector = self._selector
-        self._selector = None
         if selector is not None:
+            # Retain ownership until close returns. In particular, an
+            # asynchronous exception must leave the selector reachable so a
+            # later fail-closed cleanup attempt can close its registrations
+            # and underlying kernel descriptor.
             try:
                 selector.close()
-            except OSError:
-                pass
+            except BaseException as error:
+                close_failures.append(error)
+            else:
+                self._selector = None
         process = self._process
         if process is not None:
             for stream in (process.stdout, process.stderr):
                 if stream is not None:
                     try:
                         stream.close()
-                    except OSError:
-                        pass
+                    except BaseException as error:
+                        # Continue closing sibling descriptors, but retain the
+                        # Popen owner until a later retry confirms that every
+                        # stream has closed.
+                        close_failures.append(error)
         self._frame_buffer.clear()
         self._stderr_buffer.clear()
         self._command = ()
         self._source = None
+        if len(close_failures) == 1:
+            raise close_failures[0]
+        if close_failures:
+            raise BaseExceptionGroup(
+                "ffmpeg descriptor cleanup failures",
+                close_failures,
+            ) from None
 
     def _require_process(self) -> subprocess.Popen[bytes]:
         if self._process is None:
