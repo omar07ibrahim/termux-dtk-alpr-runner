@@ -1,0 +1,4 @@
+# Linux x86_64 evidence-only runtime. The wheel hash is published by PyPI.
+# It bundles FFmpeg 7.0.2-static; the binary is not committed to this repository.
+imageio-ffmpeg==0.6.0 \
+    --hash=sha256:c7e46fcec401dd990405049d2e2f475e2b397779df2519b544b8aab515195282

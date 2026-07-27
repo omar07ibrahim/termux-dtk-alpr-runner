@@ -52,9 +52,9 @@
       "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
     },
     {
-      "bytes": 11659,
+      "bytes": 12104,
       "path": "README.md",
-      "sha256": "3936e13d694f3856d653b14e3c474a972451fa054c47285da55e0cf3b18c60e7"
+      "sha256": "09b2a45ad4966b737bc392fbeab74ba6fab4d49a9a3e332721bd5ba48a65302b"
     },
     {
       "bytes": 60,
@@ -117,6 +117,11 @@
       "sha256": "57da61393f461dbcd797da65f4a99c284f447ac6a84410d6a85c60f3715e1659"
     },
     {
+      "bytes": 3076,
+      "path": "docs/media-evidence.md",
+      "sha256": "6d6dcb82499007e38d8bb780b256e81a412b40c907e7ada4a45dcaf8fc907119"
+    },
+    {
       "bytes": 5520,
       "path": "docs/threat-model.md",
       "sha256": "9b85b838e9afbc6ba30391d5b3a1e11408adfd10277ec9e288fd30af01a56df6"
@@ -125,6 +130,11 @@
       "bytes": 1422,
       "path": "examples/synthetic-events-v1.json",
       "sha256": "fcd01504ad72e8356815e128978f00cfc5c3bd68fb802c7ff64f89f3296b1909"
+    },
+    {
+      "bytes": 264,
+      "path": "requirements-media-evidence.lock",
+      "sha256": "aca153ebee6d623829ed6dd5e1494c3219c85d8c6987e688ac44626e8ef4ceae"
     },
     {
       "bytes": 7830,
@@ -142,9 +152,9 @@
       "sha256": "bca760794268c0a6aeea4cba370881636f8db9a893d94cb883bbbfc2996bdaae"
     },
     {
-      "bytes": 29383,
+      "bytes": 29503,
       "path": "tests/test_render_readme_visuals.py",
-      "sha256": "ae5ec540df309516ed43a175e2b94c21262b28c3643bfd9563553691550b6abe"
+      "sha256": "2d3baf2c23301ff325f9c4587dc2e8ddf1f737fd9c6c1f0b94f18d6a80ca4f7c"
     },
     {
       "bytes": 12610,
@@ -162,9 +172,9 @@
       "sha256": "3e60dcfa50bf7405d72e681fc461ae4616222462f70c115c55442dce7f90ea0f"
     },
     {
-      "bytes": 67825,
+      "bytes": 67915,
       "path": "tools/render_readme_visuals.py",
-      "sha256": "4620c1d05747d1ce65980360a7053273327b81eb3ca48e128fd05643c171f935"
+      "sha256": "2e4669178847d21a4a38bf9c6dfde7cd868b705cf98850f3e29067ed78c445fd"
     }
   ],
   "manifest": {

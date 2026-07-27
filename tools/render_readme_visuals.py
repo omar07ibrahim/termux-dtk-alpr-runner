@@ -190,8 +190,10 @@ def _input_paths(root: Path = REPOSITORY) -> tuple[Path, ...]:
         Path(".github/workflows/ci.yml"),
         Path("README.md"),
         Path("docs/charter.md"),
+        Path("docs/media-evidence.md"),
         Path("docs/threat-model.md"),
         FIXTURE_RELATIVE,
+        Path("requirements-media-evidence.lock"),
         Path("tools/render_readme_visuals.py"),
     }
     fixed.update(path.relative_to(root) for path in (root / "alpr_runner").glob("*.py"))

@@ -49,6 +49,13 @@ package. Five validated `SYNTH-*` events exercise the production
 plate-to-target geometry, per-camera zoom controller, and cross-camera
 aggregation registry. They do **not** exercise or imitate ALPR recognition.
 
+The separate [verified media boundary](docs/media-evidence.md) defines a
+hash-pinned, repository-local FFmpeg profile for upcoming frame-delivery
+evidence. Its scope and non-claims are explicit: it will exercise synthetic
+geometric media without asserting DTK execution, recognition quality, camera
+compatibility, or performance. Until that evidence is committed and passes its
+own verifier, the figures below remain event-level evidence only.
+
 Run the public fixture directly:
 
 ```bash

@@ -66,6 +66,8 @@ class CanonicalFixtureTests(unittest.TestCase):
     def test_source_snapshot_includes_every_vendor_independent_test(self) -> None:
         paths = {path.as_posix() for path in renderer._input_paths()}
 
+        self.assertIn("docs/media-evidence.md", paths)
+        self.assertIn("requirements-media-evidence.lock", paths)
         self.assertIn("tests/test_runtime_io.py", paths)
         self.assertEqual(
             {
