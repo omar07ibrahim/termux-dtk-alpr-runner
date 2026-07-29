@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="520" viewBox="0 0 1120 520" role="img" aria-labelledby="media-terminal-title media-terminal-description">
+  <title id="media-terminal-title">Pinned FFmpeg media receipt</title>
+  <desc id="media-terminal-description">A terminal-style rendering of selected exact fields from the canonical public media CLI receipt. The adjacent text artifact contains the complete stdout. The probe performs frame delivery only and does not run recognition.</desc>
+  <rect width="1120" height="520" rx="18" fill="#08111f"/>
+  <rect x="30" y="30" width="1060" height="400" rx="12" fill="#101a2a" stroke="#31415c"/>
+  <circle cx="55" cy="53" r="6" fill="#ff6b6b"/>
+  <circle cx="76" cy="53" r="6" fill="#ffd166"/>
+  <circle cx="97" cy="53" r="6" fill="#5bd68b"/>
+  <text x="550.00" y="58.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#9fb3cc" text-anchor="middle">verified real FFmpeg delivery CLI</text>
+  <text x="52.00" y="96.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#8ce99a" text-anchor="start">$ python3.12 -S tools/probe_media.py --json</text>
+  <text x="52.00" y="139.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#d9e6f5" text-anchor="start">boundary.recognition_performed = false</text>
+  <text x="52.00" y="182.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#d9e6f5" text-anchor="start">decoded_rgb = 18 frames · 829,440 bytes · 160×96 @ 6 fps</text>
+  <text x="52.00" y="225.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#d9e6f5" text-anchor="start">decoded_rgb.sha256 = 51ccea55540f6c8e8e67ecd8ea11ba5a8f16f75f2b8cff438146090b171cc21a</text>
+  <text x="52.00" y="268.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#d9e6f5" text-anchor="start">runtime.ffmpeg = 7.0.2-static · e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99</text>
+  <text x="52.00" y="311.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#d9e6f5" text-anchor="start">supervisor = exit 0 · stderr 0 B · reaped true · group closed true</text>
+  <text x="52.00" y="354.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" fill="#8ce99a" text-anchor="start"># exit=0</text>
+  <text x="550.00" y="463.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="650" fill="#86b7ff" text-anchor="middle">Selected exact fields · full canonical JSON and TXT are linked</text>
+  <text x="550.00" y="490.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#ffd166" text-anchor="middle">Frame delivery only — no detection, recognition, accuracy, or performance claim</text>
+</svg>

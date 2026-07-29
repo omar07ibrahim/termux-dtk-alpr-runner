@@ -43,22 +43,48 @@ The current zoom is software zoom. Termux/proot does not expose Camera2 hardware
 
 ## Reproducible vendor-independent evidence
 
-The repository includes one deliberately narrow evidence path that needs no
-camera, image, DTK binary, license, network access, or third-party Python
-package. Five validated `SYNTH-*` events exercise the production
-plate-to-target geometry, per-camera zoom controller, and cross-camera
-aggregation registry. They do **not** exercise or imitate ALPR recognition.
+The repository publishes two deliberately separate evidence lanes. The media
+lane proves exact synthetic-frame delivery through a real, hash-pinned FFmpeg
+process. The event lane proves deterministic orchestration, aggregation, and
+zoom geometry without media. Neither lane executes DTK or performs detection or
+recognition.
 
-The separate [verified media boundary](docs/media-evidence.md) now implements a
-hash-pinned, repository-local FFmpeg frame-delivery probe. Its canonical
-[numeric-only geometric recipe](examples/synthetic-media-v1.json) is
-source-verifiable without FFmpeg, while
-`python3.12 -S tools/probe_media.py --json` performs two real supervised FFmpeg
-runs and requires byte-identical RGB frames and lifecycle receipts. The scope
-and non-claims are explicit: the probe does not assert DTK execution,
-recognition quality, camera compatibility, or performance. The figures below
-remain event-level evidence; the media receipt is documented separately until
-its lossless frame-derived figures are published by the same verifier.
+### Verified FFmpeg RGB delivery — no recognition
+
+The [verified media boundary](docs/media-evidence.md) renders a numeric-only
+geometric recipe, binds the exact Y4M bytes and pinned FFmpeg executable to
+write-sealed descriptors, and delivers RGB24 through the production
+`FfmpegFrameSource` supervisor. One probe performs two real supervised runs and
+requires byte-identical frames and lifecycle receipts.
+
+![Lossless contact sheet from FFmpeg-decoded frames 0, 8, and 17](docs/visuals/generated/decoded-contact-sheet.png)
+
+The contact sheet contains decoded frames `0`, `8`, and `17` at nearest-neighbor
+`2×` scale. It has no labels, overlays, EXIF, or timestamps; every output pixel
+is an exact replication of a decoded source pixel bound to the receipt.
+
+![Lossless animation of all 18 FFmpeg-decoded RGB frames](docs/visuals/generated/decoded-rgb.gif)
+
+The GIF contains all `18` complete `160×96` frames in receipt order, uses the
+exact 34 decoded colors as its active palette without quantization (plus the
+required zero padding), and loops the three-second sequence. The static contact
+sheet above is the motion-safe alternative.
+
+![Selected exact fields from the public pinned-FFmpeg CLI receipt](docs/visuals/generated/media-cli-receipt.svg)
+
+The complete public output is committed as
+[canonical JSON](docs/visuals/generated/media-receipt.json) and an
+[exact normalized CLI transcript](docs/visuals/generated/media-cli-receipt.txt).
+The rendered terminal is explicitly a selected-field view, not a literal
+screen capture.
+
+![Explanatory architecture for the sealed media delivery path](docs/visuals/generated/media-architecture.svg)
+
+![Runtime-verified clean lifecycle and explanatory failure boundaries](docs/visuals/generated/media-failure-boundary.svg)
+
+The architecture and failure figures explain the verified byte path and
+supervision contract. They are labeled diagrams; runtime proof remains in the
+receipt, decoded pixels, tests, and reproducible renderer.
 
 The descriptor handoff is also fail-closed: command arguments snapshot a
 borrowed FD's file identity, status flags, and current offset without opening a
@@ -68,7 +94,38 @@ its parent-side copies immediately after spawn. Missing descriptors and
 replacements with a different observable signature are rejected before FFmpeg
 can consume them; callers must retain the original FD unchanged until start.
 
-Run the public fixture directly:
+| Exact media fact | Verified value |
+|---|---|
+| Source | `18` synthetic frames, `160×96`, `6 fps`, RGB24 |
+| Decoded bytes | `829,440` |
+| Decoded RGB SHA-256 | `51ccea55540f6c8e8e67ecd8ea11ba5a8f16f75f2b8cff438146090b171cc21a` |
+| Pinned FFmpeg SHA-256 | `e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99` |
+| Clean lifecycle | exit `0`, stderr `0 B`, leader reaped, process group closed |
+| Explicit non-claims | no camera, DTK, detection, recognition, accuracy, latency, throughput, or hardware result |
+
+### Reproduce and verify both lanes
+
+Install the hash-locked evidence runtime into the ignored repository-local
+directory. This does not modify global AWS packages or install the proprietary
+SDK:
+
+```bash
+python3.12 -m pip install \
+  --disable-pip-version-check \
+  --no-deps \
+  --require-hashes \
+  --only-binary=:all: \
+  --target .t/media-evidence-runtime \
+  -r requirements-media-evidence.lock
+```
+
+Run the public media receipt:
+
+```bash
+python3.12 -S tools/probe_media.py --json
+```
+
+The event lane needs only CPython 3.12 and the standard library:
 
 ```bash
 mkdir -p .t/manual-synthetic
@@ -77,21 +134,30 @@ python3.12 -S -m alpr_runner.synthetic \
   --out .t/manual-synthetic
 ```
 
-Verify every committed artifact by running the CLI twice in separate private
-workspaces, checking byte determinism, source hashes, privacy boundaries, SVG
-accessibility, and the exact generated-file inventory:
+Verify every committed artifact:
 
 ```bash
 python3.12 -S tools/render_readme_visuals.py --check
 ```
 
-Maintainers rebuild the bundle explicitly with `--write`; publication stages
-every file, atomically replaces each allowlisted destination, and replaces the
-manifest last. The canonical fixture is byte-tied to
-`synthetic.default_trace()`. CLI stdout must exactly match the canonical
-summary of the JSON result, while the published transcript adds only a
-path-normalized command line and an explicit exit marker. CI runs the same
-`--check` contract.
+The verifier runs each public CLI twice, separately captures the real decoded
+frames, requires the frame-bound and CLI receipts to match, recomputes raster
+pixels, checks source hashes, privacy boundaries, binary structure, SVG
+accessibility, and the exact generated-file inventory. On Linux it also
+fail-closes unsafe `SIGCHLD`/thread/child contexts, contains descendants under a
+temporary subreaper, and turns parent `SIGHUP`/`SIGINT`/`SIGQUIT`/`SIGTERM` into
+ordered cleanup; those termination signals must be initially unblocked.
+Maintainers rebuild with `--write`; publication stages every allowlisted file
+and replaces the manifest last. CI runs the same `--check` contract.
+
+![Evidence reproduction workflow for both independent lanes](docs/visuals/generated/setup-workflow.svg)
+
+### Synthetic event orchestration — no media
+
+Five validated `SYNTH-*` events exercise the production plate-to-target
+geometry, per-camera zoom controller, and cross-camera aggregation registry.
+This lane needs no camera, image, FFmpeg, DTK binary, license, network access,
+or third-party package. It does not exercise or imitate ALPR recognition.
 
 ![Path-normalized deterministic synthetic-event terminal evidence](docs/visuals/generated/terminal-evidence.svg)
 
@@ -99,27 +165,23 @@ path-normalized command line and an explicit exit marker. CI runs the same
 
 ![Runtime-derived software zoom geometry with no image pixels](docs/visuals/generated/zoom-geometry.svg)
 
-The next two figures explain boundaries and setup. They are intentionally
-labeled as architecture/workflow material, not as runtime proof.
+The next figure is intentionally labeled as an explanatory architecture
+diagram, not runtime proof.
 
 ![Architecture boundary separating verified orchestration from external recognition](docs/visuals/generated/architecture-boundary.svg)
 
-![Evidence reproduction workflow](docs/visuals/generated/setup-workflow.svg)
-
 | Evidence | Derivation | What it verifies | Explicitly not verified |
 |---|---|---|---|
+| [Media receipt](docs/visuals/generated/media-receipt.json), [CLI transcript](docs/visuals/generated/media-cli-receipt.txt), and [terminal view](docs/visuals/generated/media-cli-receipt.svg) | Two byte-identical public CLI runs matched to a separately captured frame-bound receipt | Pinned identities, exact RGB delivery, clean supervisor lifecycle, public non-recognition boundary | A literal screen capture, camera/SDK behavior, recognition, accuracy, or performance |
+| [Contact sheet](docs/visuals/generated/decoded-contact-sheet.png) and [lossless GIF](docs/visuals/generated/decoded-rgb.gif) | Encoded directly from actual pinned-FFmpeg RGB output and decoded again by the verifier | Pixel identity, frame order, palette preservation, three-second motion sequence | Detection quality, real-scene authenticity, production video compatibility |
+| [Media architecture](docs/visuals/generated/media-architecture.svg) / [failure boundary](docs/visuals/generated/media-failure-boundary.svg) | Explanatory diagrams populated with verified receipt values | Byte-flow, trust boundary, clean path, documented cleanup model | Independent runtime proof for drawn failure branches |
 | [CLI transcript](docs/visuals/generated/terminal-transcript.txt) and [terminal evidence](docs/visuals/generated/terminal-evidence.svg) | Exact stdout from two byte-identical runs, framed by a renderer-added path-normalized command and `exit=0` marker | Public command shape, five-event/two-camera execution, explicit non-recognition boundary | A literal screen capture, ALPR accuracy, camera compatibility, SDK execution |
 | [Synthetic result](docs/visuals/generated/synthetic-result.json) | Actual private-mode CLI artifact | Canonical fixture ingestion, aggregation counts, target and zoom data | Exhaustive validation, image processing, detection quality, latency or throughput |
 | [Event flow](docs/visuals/generated/event-flow.svg) | Drawn from the result's five events | Cross-camera deduplication and aggregate state | Production traffic or real plates |
 | [Zoom geometry](docs/visuals/generated/zoom-geometry.svg) | Drawn from final normalized target/crop coordinates | Geometry and bounded per-camera zoom state | Pixel crop quality, optical zoom, PTZ control |
-| [Architecture](docs/visuals/generated/architecture-boundary.svg) / [workflow](docs/visuals/generated/setup-workflow.svg) | Explanatory diagrams | Trust boundary and reproduction steps | Runtime behavior |
-| [SHA-256 manifest](docs/visuals/generated/manifest.sha256.json) | Renderer inventory and source snapshot | Exact inputs, outputs, evidence labels, byte currency | Artifact signing or third-party attestation |
-
-No GIF or video is published for this event-level demo because animation would
-add no verified information beyond the exact-summary-bound transcript, event
-sequence, and geometry figures. The separate media probe now provides the
-necessary real, reproducible RGB source for a lossless animation without
-proprietary or personal data.
+| [Architecture](docs/visuals/generated/architecture-boundary.svg) | Explanatory diagram for the synthetic-event lane | Trust boundary between orchestration and external recognition | Runtime behavior |
+| [Workflow](docs/visuals/generated/setup-workflow.svg) | Explanatory setup shared by both evidence lanes | Reproduction and verification steps | Runtime behavior |
+| [SHA-256 manifest](docs/visuals/generated/manifest.sha256.json) | Two-lane renderer inventory and source snapshot | Exact inputs, outputs, lane memberships/evidence labels, byte currency | Artifact signing or third-party attestation |
 
 ## Phone Install
 

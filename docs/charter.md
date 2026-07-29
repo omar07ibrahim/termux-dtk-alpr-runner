@@ -29,8 +29,10 @@ model.
   fallback. Expected license and callback-registration failures roll back
   partially constructed native owners.
 - A reproducible evidence renderer with two byte-identical CLI runs, bounded
-  subprocess streams, exact generated-tree checks, source hashes, privacy
-  scans, accessible SVG validation, and manifest-last publication.
+  subprocess streams, Linux subreaper containment, graceful parent-signal
+  cleanup, PID/PGID ownership checks, exact generated-tree checks, source
+  hashes, privacy scans, accessible SVG validation, and manifest-last
+  publication.
 - A Linux x86_64 synthetic-media probe that binds a hash-pinned FFmpeg
   executable and both Y4M renders from the numeric-only recipe to write-sealed
   descriptors, delivers 18 exact RGB24 frames twice through the production
@@ -104,7 +106,8 @@ The current bundle uses only `SYNTH-01`, `SYNTH-02`, and
 canonical-summary stdout with a path-normalized command and exit marker added
 by the renderer; its event-flow and zoom figures are derived from the actual
 JSON artifact; its architecture and setup figures are explicitly explanatory.
-There is no GIF or video because the fixture has no pixels and animation would
-not establish an additional verified property. A separate exact RGB media
-probe now supplies real decoded pixels; any later PNG/GIF must remain
-byte-bound to its receipt and preserve the same non-recognition boundary.
+The event lane has no GIF or video because its fixture has no pixels and
+animation would not establish an additional verified property. The separate
+exact RGB media probe publishes a lossless contact sheet and all-frame GIF from
+real decoded pixels; both are decoded and checked byte-for-byte against the
+receipt while preserving the same non-recognition boundary.

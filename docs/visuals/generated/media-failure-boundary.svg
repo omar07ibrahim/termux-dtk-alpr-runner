@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="535" viewBox="0 0 1120 535" role="img" aria-labelledby="media-failure-title media-failure-description">
+  <title id="media-failure-title">Media lifecycle and failure boundary</title>
+  <desc id="media-failure-description">Runtime checks establish exact frames, clean exit, process reaping, group closure, and workspace removal; the public receipt records the bounded process facts. Explanatory branches summarize retry and escalation contracts plus failures outside graceful cleanup.</desc>
+  <rect width="1120" height="535" rx="18" fill="#08111f"/>
+  <text x="45.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Media lifecycle and failure boundary</text>
+  <text x="45.00" y="78.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffd166" text-anchor="start">FAILURE MODEL — clean branch runtime-verified; failure branches explanatory</text>
+  <rect x="40" y="118" width="1040" height="108" rx="14" fill="#102c27" stroke="#58d6a8" stroke-width="2"/>
+  <text x="66.00" y="148.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="800" fill="#8ce99a" text-anchor="start">EXECUTED CLEAN BRANCH</text>
+  <text x="66.00" y="181.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="650" fill="#dce8f7" text-anchor="start">18 full frames → EOF / exit 0 → process group quiescent → private workspaces removed</text>
+  <text x="66.00" y="207.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#b9cce2" text-anchor="start">Receipt: stderr 0 B · leader reaped true · group closed true · termination none</text>
+  <rect x="40" y="254" width="1040" height="154" rx="14" fill="#261d24" stroke="#c2789b" stroke-width="2"/>
+  <text x="66.00" y="286.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="800" fill="#ff9bc2" text-anchor="start">EXPLANATORY FAIL-CLOSED BRANCH</text>
+  <text x="66.00" y="320.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="650" fill="#dce8f7" text-anchor="start">invalid binding · startup/idle timeout · stderr cap · partial frame · caller cancellation</text>
+  <text x="66.00" y="354.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#dce8f7" text-anchor="start">retain owned handles → request TERM ≤ 2s → KILL ≤ 2s if needed → reap → safe path-free error</text>
+  <text x="66.00" y="384.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#b9cce2" text-anchor="start">Uncertain descriptor cleanup remains explicitly retryable; foreign replacement slots are not closed</text>
+  <rect x="160" y="440" width="800" height="62" rx="12" fill="#2a1d18" stroke="#8f654a"/>
+  <text x="560.00" y="466.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="700" fill="#ffd166" text-anchor="middle">Outside graceful cleanup: SIGKILL · os._exit · interpreter/native crash · kernel failure</text>
+  <text x="560.00" y="489.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#dce8f7" text-anchor="middle">No diagram branch claims detection, recognition, accuracy, throughput, or camera compatibility</text>
+</svg>

@@ -1,0 +1,146 @@
+$ python3.12 -S tools/probe_media.py --json
+{
+  "boundary": {
+    "camera_used": false,
+    "external_sdk_used": false,
+    "performance_measured": false,
+    "recognition_accuracy": "not_evaluated",
+    "recognition_performed": false,
+    "synthetic_media_used": true
+  },
+  "decoded_rgb": {
+    "bytes": 829440,
+    "frame_count": 18,
+    "frame_sha256": [
+      "5bb4d807877ca65727bf42991a735fd3970572f0b4a6788b1533e0bfbd2eb177",
+      "8ba75c9a95369f965bd31b8a1d4f9ec46fa6ab99b3d61038082bca4e52fc393c",
+      "af802881ff90550d6ec99fac4bb91ad1819fccf21a396e9b65c8bdc3b45c8c08",
+      "a15798ae36b5b149695ed40f1e861f354596f211f43e9da23dfe9f3f81ad1c2d",
+      "4362f2a6a489ff3bba609bbc7dabd050aff4dc448f74065f8056aa6a9602c264",
+      "16f2806164588eb4dc08a2d798127814c922464c011919108f9a137e8bd83a5d",
+      "bbef572a79fdb6eb6caf2d772948527bf4089f5f6e01e01b608bce69461aa08f",
+      "0418a4527c0416eb2ecb99cf8c51b8bd8db5a26e0106f62c2e3a407893eab948",
+      "505ed713c4a1df99ebe141471edcb6a8538378ea2f73f65374a51cd07995fb97",
+      "0984ba90988c576ca8b2303688d50a960517b7dc0d6a63a68f69858640e26c60",
+      "214ec898b179ac0741960ca7bd552934dc808be420bf51d6a7ca76e90f06cb49",
+      "c99ca49b0ebf5db2936f5bcd81e2f9c55f60cf06c4f90314d52cd3c150f38ccd",
+      "80b80c6461498bc1eee50f94f1a99de5157765dcfe57435f36da3fbe6c87c846",
+      "94638bd9cd4c15526a344482111bd26adb2c0916e73c0b72561c9517afc08d6c",
+      "a4c37b8c88a98850618703a8525773be772c0678efaa80ef3742019543c1d1b7",
+      "c62e51bb9b8256a4d8ccd3636bf4464dabe65da66704f87207d27b1ce0c03162",
+      "ea5bcb3abdb46f010e14d6605c455e6968c69b6869532b00d8c362531a0e4037",
+      "3094c47fd64bbb03b0420e66f4b0ccbb7e6429545ec92f4da5acd243e9730aee"
+    ],
+    "sha256": "51ccea55540f6c8e8e67ecd8ea11ba5a8f16f75f2b8cff438146090b171cc21a",
+    "unique_colors": 34
+  },
+  "determinism": {
+    "byte_identical_rgb_runs": 2,
+    "byte_identical_supervisor_receipts": 2,
+    "byte_identical_y4m_renders": 2,
+    "host_dispatch_disabled": true,
+    "probe_runs": 2,
+    "timestamp_fields": 0,
+    "verified_bytes_reopened_by_path": false
+  },
+  "runtime": {
+    "command": [
+      "PINNED-FFMPEG-7.0.2",
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-cpuflags",
+      "0",
+      "-cpucount",
+      "1",
+      "-threads",
+      "1",
+      "-filter_threads",
+      "1",
+      "-fflags",
+      "+bitexact",
+      "-f",
+      "yuv4mpegpipe",
+      "-i",
+      "PRIVATE-SYNTHETIC-Y4M",
+      "-map",
+      "0:v:0",
+      "-an",
+      "-sn",
+      "-dn",
+      "-fps_mode",
+      "passthrough",
+      "-threads",
+      "1",
+      "-flags:v",
+      "+bitexact",
+      "-pix_fmt",
+      "rgb24",
+      "-f",
+      "rawvideo",
+      "pipe:1"
+    ],
+    "ffmpeg": {
+      "bytes": 79826272,
+      "execution_binding": "write-sealed-memfd",
+      "redistributed": false,
+      "sha256": "e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99",
+      "version": "7.0.2-static"
+    },
+    "profile": "linux-x86_64-cpuflags0-bitexact-v1",
+    "python": "3.12"
+  },
+  "schema_version": 1,
+  "source": {
+    "frame": {
+      "bytes_per_frame": 46080,
+      "duration_seconds": 3,
+      "fps": 6,
+      "height": 96,
+      "pixel_format": "rgb24",
+      "width": 160
+    },
+    "recipe": {
+      "bytes": 1288,
+      "path": "examples/synthetic-media-v1.json",
+      "sha256": "ab8d7a7518d3d952d725ee96f0de9b6ecfdef7102f4b78ddcb125cab062466f6"
+    },
+    "y4m": {
+      "bytes": 414869,
+      "delivery_binding": "write-sealed-inherited-fd",
+      "sha256": "7614365d1342f1786ab82bb0d3fe07f1d5215cb6159bba40674234346ca7cfeb"
+    }
+  },
+  "supervisor": {
+    "cleanup_code": null,
+    "exit_code": 0,
+    "failure_code": null,
+    "frame": {
+      "bytes_per_frame": 46080,
+      "fps": 6,
+      "height": 96,
+      "pixel_format": "rgb24",
+      "width": 160
+    },
+    "frames_delivered": 18,
+    "process_group_closed": true,
+    "process_reaped": true,
+    "schema_version": 1,
+    "source": {
+      "kind": "synthetic"
+    },
+    "state": "ended",
+    "stderr_bytes": 0,
+    "stdout_bytes": 829440,
+    "termination": "none"
+  },
+  "supervisor_limits": {
+    "idle_timeout_seconds": 5.0,
+    "kill_timeout_seconds": 2.0,
+    "startup_timeout_seconds": 10.0,
+    "stderr_limit_bytes": 4096,
+    "terminate_timeout_seconds": 2.0
+  }
+}
+# exit=0

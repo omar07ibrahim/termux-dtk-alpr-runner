@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="420" viewBox="0 0 1120 420" role="img" aria-labelledby="setup-title setup-description">
   <title id="setup-title">Evidence reproduction workflow</title>
-  <desc id="setup-description">An explanatory five-step workflow for reproducing and checking the synthetic event evidence with Python 3.12.</desc>
+  <desc id="setup-description">An explanatory five-step workflow for reproducing and checking the synthetic event and pinned FFmpeg media evidence with Python 3.12 and the repository-local hash-locked runtime.</desc>
   <rect width="1120" height="420" rx="18" fill="#08111f"/>
   <text x="48.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Evidence reproduction workflow</text>
   <text x="48.00" y="78.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffd166" text-anchor="start">WORKFLOW — explanatory setup guide, not runtime proof</text>
@@ -9,36 +9,36 @@
   <circle cx="70" cy="158" r="17" fill="#58d6a8"/>
   <text x="70.00" y="164.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="#07131f" text-anchor="middle">1</text>
   <text x="58.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Python 3.12</text>
-  <text x="58.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">standard library only</text>
+  <text x="58.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">stdlib renderer</text>
   <line x1="226" y1="193" x2="249" y2="193" stroke="#86b7ff" stroke-width="3"/>
   <path d="M 242 186 L 252 193 L 242 200" fill="none" stroke="#86b7ff" stroke-width="3"/>
   <rect x="258" y="130" width="180" height="126" rx="14" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
   <circle cx="286" cy="158" r="17" fill="#58d6a8"/>
   <text x="286.00" y="164.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="#07131f" text-anchor="middle">2</text>
-  <text x="274.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Canonical fixture</text>
-  <text x="274.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">5 fake events</text>
+  <text x="274.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Locked FFmpeg</text>
+  <text x="274.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">repo-local .t runtime</text>
   <line x1="442" y1="193" x2="465" y2="193" stroke="#86b7ff" stroke-width="3"/>
   <path d="M 458 186 L 468 193 L 458 200" fill="none" stroke="#86b7ff" stroke-width="3"/>
   <rect x="474" y="130" width="180" height="126" rx="14" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
   <circle cx="502" cy="158" r="17" fill="#58d6a8"/>
   <text x="502.00" y="164.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="#07131f" text-anchor="middle">3</text>
-  <text x="490.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Run twice</text>
-  <text x="490.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">private mode 0700</text>
+  <text x="490.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Run both lanes</text>
+  <text x="490.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">events + real RGB</text>
   <line x1="658" y1="193" x2="681" y2="193" stroke="#86b7ff" stroke-width="3"/>
   <path d="M 674 186 L 684 193 L 674 200" fill="none" stroke="#86b7ff" stroke-width="3"/>
   <rect x="690" y="130" width="180" height="126" rx="14" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
   <circle cx="718" cy="158" r="17" fill="#58d6a8"/>
   <text x="718.00" y="164.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="#07131f" text-anchor="middle">4</text>
   <text x="706.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Validate</text>
-  <text x="706.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">privacy + SVG + hashes</text>
+  <text x="706.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">pixels + privacy + hashes</text>
   <line x1="874" y1="193" x2="897" y2="193" stroke="#86b7ff" stroke-width="3"/>
   <path d="M 890 186 L 900 193 L 890 200" fill="none" stroke="#86b7ff" stroke-width="3"/>
   <rect x="906" y="130" width="180" height="126" rx="14" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
   <circle cx="934" cy="158" r="17" fill="#58d6a8"/>
   <text x="934.00" y="164.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="#07131f" text-anchor="middle">5</text>
   <text x="922.00" y="202.00" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#dce8f7" text-anchor="start">Check</text>
-  <text x="922.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">byte-current bundle</text>
+  <text x="922.00" y="229.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="400" fill="#9fb3cc" text-anchor="start">15 byte-current files</text>
   <rect x="120" y="307" width="880" height="68" rx="12" fill="#0d2132" stroke="#355575"/>
   <text x="560.00" y="335.00" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="650" fill="#8ce99a" text-anchor="middle">python3.12 -S tools/render_readme_visuals.py --check</text>
-  <text x="560.00" y="359.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#dce8f7" text-anchor="middle">No SDK, camera, model, network access, or third-party Python package</text>
+  <text x="560.00" y="359.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#dce8f7" text-anchor="middle">No SDK, camera, model, license, personal media, or third-party Python import</text>
 </svg>

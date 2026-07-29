@@ -86,11 +86,18 @@ memory-safety defect in the SDK can compromise the runner.
 - The public evidence path accepts only bounded, strictly shaped `SYNTH-*`
   events, uses no image or recognition backend, and writes its runtime artifact
   inside a mode-`0700` directory as a mode-`0600` file.
-- The evidence renderer runs the fixed Python 3.12 command twice with a minimal
-  environment, bounded stdout/stderr, a timeout, and original-process-group
-  cleanup under an explicit no-detach command contract. It requires
-  byte-identical results and exact canonical-summary stdout before deriving any
-  visual.
+- The Linux evidence renderer runs each fixed Python 3.12 command twice with a
+  minimal environment, bounded stdout/stderr, and a timeout. Before spawn it
+  requires one main kernel thread, the default `SIGCHLD` disposition, no
+  pre-existing children, and a successful wait-status canary; a temporary
+  child subreaper contains both declared no-detach commands and the
+  signal-aware media wrapper. Numeric process-group signals are permitted only
+  while `waitid(..., WNOWAIT)` still anchors the leader, and adopted descendants
+  are killed and reaped before the subreaper state is restored. Parent
+  `SIGHUP`, `SIGINT`, `SIGQUIT`, and `SIGTERM` become bounded cleanup requests.
+  Those signals must be unblocked before entry so children cannot inherit a
+  mask that defeats the cleanup contract. The renderer requires byte-identical
+  results and exact canonical-summary stdout before deriving any visual.
 - The synthetic-media probe accepts only the exact numeric recipe and a
   size/hash-pinned Linux x86_64 FFmpeg executable. It copies the verified
   executable into a write-sealed `memfd`, passes each independently rendered
@@ -145,7 +152,9 @@ memory-safety defect in the SDK can compromise the runner.
   transfer, terminal-completion boundary, and Destroy quiescence cannot be
   verified from this repository. The wrapper conservatively retains memory
   through callback overlap, but licensed-device conformance remains required.
-- There is no dependency lock, SBOM, signed release, or vulnerability policy.
+- There is no complete production/Termux dependency lock, SBOM, signed
+  release, or vulnerability policy. Only the Linux x86_64 evidence runtime is
+  hash-locked by `requirements-media-evidence.lock`.
 
 Until these gaps are closed, use only a single-user, isolated, local test
 environment with synthetic or explicitly authorized media.
@@ -189,5 +198,3 @@ compatibility.
 - Licensed-device conformance tests for the documented DTK ownership and
   callback-order assumptions; offline tests use opaque fake handles and prove
   only the repository-owned wrapper model.
-- Lossless, receipt-bound figures for the synthetic-media delivery boundary;
-  recognition remains outside that pipeline by design.

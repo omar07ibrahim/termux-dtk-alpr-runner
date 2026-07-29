@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Rebuild and verify the README's vendor-independent evidence bundle.
 
-The renderer deliberately uses only the Python standard library.  It executes
-the public synthetic-event CLI twice, compares the real artifacts byte for
-byte, derives the runtime figures from that result, and publishes through a
-staging directory with the manifest replaced last.
+The renderer deliberately uses only the Python standard library. It executes
+both public evidence CLIs twice, compares their real outputs byte for byte,
+derives event figures and lossless media from those verified runs, and
+publishes through a staging directory with the manifest replaced last.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import html
 import json
@@ -22,6 +23,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Mapping
@@ -46,6 +48,37 @@ EVENT_FLOW_SVG = "event-flow.svg"
 ZOOM_GEOMETRY_SVG = "zoom-geometry.svg"
 ARCHITECTURE_SVG = "architecture-boundary.svg"
 SETUP_SVG = "setup-workflow.svg"
+MEDIA_RECEIPT = "media-receipt.json"
+MEDIA_TRANSCRIPT = "media-cli-receipt.txt"
+MEDIA_TERMINAL_SVG = "media-cli-receipt.svg"
+MEDIA_CONTACT_SHEET_PNG = "decoded-contact-sheet.png"
+MEDIA_GIF = "decoded-rgb.gif"
+MEDIA_ARCHITECTURE_SVG = "media-architecture.svg"
+MEDIA_FAILURE_SVG = "media-failure-boundary.svg"
+
+EVENT_OUTPUT_NAMES = frozenset(
+    {
+        RUNTIME_RESULT,
+        TERMINAL_TRANSCRIPT,
+        TERMINAL_SVG,
+        EVENT_FLOW_SVG,
+        ZOOM_GEOMETRY_SVG,
+        ARCHITECTURE_SVG,
+        SETUP_SVG,
+    }
+)
+MEDIA_OUTPUT_NAMES = frozenset(
+    {
+        MEDIA_RECEIPT,
+        MEDIA_TRANSCRIPT,
+        MEDIA_TERMINAL_SVG,
+        MEDIA_CONTACT_SHEET_PNG,
+        MEDIA_GIF,
+        MEDIA_ARCHITECTURE_SVG,
+        MEDIA_FAILURE_SVG,
+        SETUP_SVG,
+    }
+)
 
 OUTPUT_KINDS: dict[str, str] = {
     RUNTIME_RESULT: "runtime-derived",
@@ -55,6 +88,24 @@ OUTPUT_KINDS: dict[str, str] = {
     ZOOM_GEOMETRY_SVG: "runtime-derived",
     ARCHITECTURE_SVG: "architecture-only",
     SETUP_SVG: "workflow-only",
+    MEDIA_RECEIPT: "runtime-derived",
+    MEDIA_TRANSCRIPT: "runtime-derived-normalized",
+    MEDIA_TERMINAL_SVG: "runtime-derived-normalized",
+    MEDIA_CONTACT_SHEET_PNG: "runtime-derived-lossless",
+    MEDIA_GIF: "runtime-derived-lossless",
+    MEDIA_ARCHITECTURE_SVG: "architecture-only",
+    MEDIA_FAILURE_SVG: "architecture-only",
+}
+OUTPUT_LANES = {
+    name: tuple(
+        lane
+        for lane, members in (
+            ("synthetic_events", EVENT_OUTPUT_NAMES),
+            ("synthetic_media", MEDIA_OUTPUT_NAMES),
+        )
+        if name in members
+    )
+    for name in OUTPUT_KINDS
 }
 EXPECTED_GENERATED_NAMES = frozenset({*OUTPUT_KINDS, MANIFEST_NAME})
 SVG_NAMES = frozenset(
@@ -64,6 +115,9 @@ SVG_NAMES = frozenset(
         ZOOM_GEOMETRY_SVG,
         ARCHITECTURE_SVG,
         SETUP_SVG,
+        MEDIA_TERMINAL_SVG,
+        MEDIA_ARCHITECTURE_SVG,
+        MEDIA_FAILURE_SVG,
     }
 )
 
@@ -71,9 +125,16 @@ MAX_SOURCE_BYTES = 2 * 1024 * 1024
 MAX_RESULT_BYTES = 512 * 1024
 MAX_STREAM_BYTES = 32 * 1024
 MAX_SVG_BYTES = 256 * 1024
+MAX_PNG_BYTES = 1024 * 1024
+MAX_GIF_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 10.0
 PROCESS_CLEANUP_SECONDS = 1.0
+SIGNAL_AWARE_WRAPPER_CLEANUP_SECONDS = 6.0
+ADOPTED_CHILD_CLEANUP_SECONDS = 2.0
 PYTHON_PATH = "/usr/local/bin:/usr/bin:/bin"
+PINNED_GIF_SHA256 = (
+    "8809951ca71a11d19351d6bb82478f363ffbb17b5f68378869121b8a074c46e1"
+)
 COMMAND_DISPLAY = (
     "python3.12",
     "-S",
@@ -83,6 +144,12 @@ COMMAND_DISPLAY = (
     FIXTURE_RELATIVE.as_posix(),
     "--out",
     "PRIVATE-RUNTIME",
+)
+MEDIA_COMMAND_DISPLAY = (
+    "python3.12",
+    "-S",
+    "tools/probe_media.py",
+    "--json",
 )
 
 _SYNTH_TOKEN = re.compile(r"SYNTH-[0-9]{2}\Z")
@@ -119,6 +186,10 @@ class EvidenceError(RuntimeError):
     """Raised when evidence cannot be reproduced or safely published."""
 
 
+class _OwnershipLost(EvidenceError):
+    """Raised when a numeric PID/PGID is no longer anchored by our child."""
+
+
 @dataclass(frozen=True)
 class CommandResult:
     returncode: int
@@ -131,6 +202,13 @@ class DemoRun:
     stdout: bytes
     artifact: bytes
     result: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class MediaRun:
+    stdout: bytes
+    receipt: dict[str, Any]
+    frames: tuple[bytes, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +245,9 @@ class _FileSnapshot:
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 _TEMP_PREFIX = re.compile(r"[a-z0-9][a-z0-9-]{0,31}\Z")
+_SUBREAPER_ACTIVE = False
+_PR_SET_CHILD_SUBREAPER = 36
+_PR_GET_CHILD_SUBREAPER = 37
 
 
 def _sha256(payload: bytes) -> str:
@@ -636,16 +717,667 @@ def _signal_process_group(process_group: int, selected: signal.Signals) -> None:
         ) from None
 
 
-def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    # The original process group can outlive its leader while a descendant
-    # retains our pipes. Signal the PGID even after poll()/wait() reaps the
-    # leader. Deliberate setsid()/daemon detachment is outside this fixed
-    # no-detach command contract.
-    _signal_process_group(process.pid, signal.SIGKILL)
+def _catchable_signals() -> frozenset[int]:
+    return frozenset(
+        int(selected)
+        for selected in signal.valid_signals()
+        if selected not in {signal.SIGKILL, signal.SIGSTOP}
+    )
+
+
+class _SignalMaskScope:
+    """Restore the calling thread's exact signal mask after a critical section."""
+
+    def __init__(self, blocked: Iterable[int]) -> None:
+        self._blocked = frozenset(blocked)
+        self._previous: set[signal.Signals] | None = None
+
+    def __enter__(self) -> _SignalMaskScope:
+        try:
+            previous = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+            self._previous = set(previous)
+            signal.pthread_sigmask(signal.SIG_BLOCK, self._blocked)
+            return self
+        except BaseException as primary:
+            cleanup: list[BaseException] = []
+            if self._previous is not None:
+                try:
+                    signal.pthread_sigmask(
+                        signal.SIG_SETMASK,
+                        self._previous,
+                    )
+                except BaseException as error:
+                    cleanup.append(error)
+                else:
+                    self._previous = None
+            _raise_preserving_failures(primary, cleanup)
+        raise AssertionError("unreachable")
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> bool:
+        del exc_type, traceback
+        if self._previous is None:
+            return False
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, self._previous)
+        except BaseException as error:
+            wrapped = EvidenceError("evidence signal mask could not be restored")
+            wrapped.__cause__ = error
+            _raise_preserving_failures(exc_value, [wrapped])
+        self._previous = None
+        return False
+
+
+class _TerminationSignalScope:
+    """Turn graceful parent termination into an ordered child cleanup request."""
+
+    _signals = (
+        signal.SIGHUP,
+        signal.SIGINT,
+        signal.SIGQUIT,
+        signal.SIGTERM,
+    )
+
+    def __init__(self) -> None:
+        self._previous: dict[signal.Signals, Any] = {}
+        self.requested = False
+
+    def __enter__(self) -> _TerminationSignalScope:
+        if threading.current_thread() is not threading.main_thread():
+            raise EvidenceError(
+                "bounded evidence commands require the renderer main thread"
+            )
+        try:
+            current_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+        except (OSError, ValueError) as error:
+            raise EvidenceError(
+                "evidence termination signal mask is unavailable"
+            ) from error
+        if {int(selected) for selected in current_mask} & {
+            int(selected) for selected in self._signals
+        }:
+            raise EvidenceError(
+                "bounded evidence requires termination signals to be unblocked"
+            )
+        try:
+            with _SignalMaskScope(self._signals):
+                for selected in self._signals:
+                    previous = signal.getsignal(selected)
+                    self._previous[selected] = previous
+                    signal.signal(selected, self._request_stop)
+            return self
+        except BaseException as primary:
+            cleanup = self._restore_with_retry()
+            _raise_preserving_failures(primary, cleanup)
+        raise AssertionError("unreachable")
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> bool:
+        del exc_type, traceback
+        cleanup = self._restore_with_retry()
+        if cleanup:
+            _raise_preserving_failures(exc_value, cleanup)
+        if exc_value is None:
+            self.raise_if_requested()
+        return False
+
+    def _request_stop(self, signum: int, frame: object) -> None:
+        del signum, frame
+        self.requested = True
+
+    def raise_if_requested(self) -> None:
+        if self.requested:
+            raise EvidenceError(
+                "synthetic evidence command was interrupted safely"
+            )
+
+    def _restore_once(self) -> list[BaseException]:
+        errors: list[BaseException] = []
+        try:
+            with _SignalMaskScope(self._signals):
+                for selected, previous in reversed(
+                    tuple(self._previous.items())
+                ):
+                    try:
+                        signal.signal(selected, previous)
+                    except BaseException as error:
+                        wrapped = EvidenceError(
+                            "evidence termination handler could not be restored"
+                        )
+                        wrapped.__cause__ = error
+                        errors.append(wrapped)
+                    else:
+                        del self._previous[selected]
+        except BaseException as error:
+            errors.append(error)
+        return errors
+
+    def _restore_with_retry(self) -> list[BaseException]:
+        errors: list[BaseException] = []
+        for _attempt in range(2):
+            if not self._previous:
+                break
+            errors.extend(self._restore_once())
+        return errors
+
+
+def _kernel_task_ids() -> set[int]:
     try:
-        process.wait(timeout=PROCESS_CLEANUP_SECONDS)
-    except subprocess.TimeoutExpired as error:
-        raise EvidenceError("synthetic evidence process could not be reaped") from error
+        with os.scandir("/proc/self/task") as entries:
+            tasks = {
+                int(entry.name)
+                for entry in entries
+                if entry.name.isascii() and entry.name.isdigit()
+            }
+    except OSError as error:
+        raise EvidenceError(
+            "bounded evidence kernel-thread inventory is unavailable"
+        ) from error
+    if not tasks:
+        raise EvidenceError(
+            "bounded evidence kernel-thread inventory is empty"
+        )
+    return tasks
+
+
+def _assert_one_kernel_thread() -> None:
+    if (
+        threading.current_thread() is not threading.main_thread()
+        or _kernel_task_ids() != {os.getpid()}
+    ):
+        raise EvidenceError(
+            "bounded evidence requires one isolated main kernel thread"
+        )
+
+
+def _wait_for_unreaped_exit(
+    process: subprocess.Popen[bytes],
+    timeout_seconds: float,
+) -> bool:
+    """Observe child exit without releasing its PID/PGID identity."""
+
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    flags = os.WEXITED | os.WNOHANG | os.WNOWAIT
+    while True:
+        try:
+            status = os.waitid(os.P_PID, process.pid, flags)
+        except InterruptedError:
+            continue
+        except ChildProcessError as error:
+            raise _OwnershipLost(
+                "evidence process ownership was lost before cleanup"
+            ) from error
+        except OSError as error:
+            raise EvidenceError(
+                "evidence process status could not be observed safely"
+            ) from error
+        if status is not None:
+            if status.si_pid != process.pid:
+                raise EvidenceError("evidence process status identity changed")
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.01, remaining))
+
+
+@dataclass
+class _OwnedProcess:
+    """A child whose numeric PID/PGID remains signalable only while anchored."""
+
+    process: subprocess.Popen[bytes]
+    ownership_lost: bool = False
+    signal_allowed: bool = True
+    reaped: bool = False
+
+    def observe(self, timeout_seconds: float) -> bool:
+        if self.ownership_lost or self.reaped:
+            raise _OwnershipLost(
+                "evidence process identity is no longer owned"
+            )
+        try:
+            return _wait_for_unreaped_exit(
+                self.process,
+                timeout_seconds,
+            )
+        except _OwnershipLost:
+            self.ownership_lost = True
+            self.signal_allowed = False
+            raise
+
+    def signal_group(self, selected: signal.Signals) -> None:
+        if (
+            self.ownership_lost
+            or self.reaped
+            or not self.signal_allowed
+        ):
+            raise _OwnershipLost(
+                "numeric process group is no longer safely signalable"
+            )
+        with _SignalMaskScope(_catchable_signals()):
+            _assert_one_kernel_thread()
+            self.observe(0.0)
+            _signal_process_group(self.process.pid, selected)
+
+    def reap(self) -> int:
+        if self.ownership_lost or self.reaped:
+            raise _OwnershipLost(
+                "evidence process cannot be reaped after ownership loss"
+            )
+        with _SignalMaskScope(_catchable_signals()):
+            _assert_one_kernel_thread()
+            if not self.observe(PROCESS_CLEANUP_SECONDS):
+                raise EvidenceError("evidence process could not be reaped")
+
+            # Publish the end of numeric signalling authority before waitpid
+            # releases the PID. An interruption from this point can leave work
+            # for the subreaper, but it can never signal a reused PID/PGID.
+            self.signal_allowed = False
+            try:
+                waited_pid, status = os.waitpid(self.process.pid, 0)
+            except ChildProcessError as error:
+                self.ownership_lost = True
+                raise _OwnershipLost(
+                    "evidence process ownership was lost while reaping"
+                ) from error
+            except OSError as error:
+                self.ownership_lost = True
+                raise EvidenceError(
+                    "evidence process reaping failed"
+                ) from error
+            if waited_pid != self.process.pid:
+                self.ownership_lost = True
+                raise EvidenceError(
+                    "evidence process reaping identity changed"
+                )
+            returncode = os.waitstatus_to_exitcode(status)
+            self.process.returncode = returncode
+            self.reaped = True
+            return returncode
+
+
+def _terminate_process_group(owner: _OwnedProcess) -> int:
+    """Signal an owned group before reaping the leader that anchors its PGID."""
+
+    owner.signal_group(signal.SIGKILL)
+    return owner.reap()
+
+
+def _terminate_signal_aware_wrapper(
+    owner: _OwnedProcess,
+    *,
+    already_exited: bool,
+) -> int:
+    """Let a trusted wrapper close its detached children before it exits."""
+
+    exited = already_exited or owner.observe(0.0)
+    if not exited:
+        owner.signal_group(signal.SIGTERM)
+        exited = owner.observe(
+            SIGNAL_AWARE_WRAPPER_CLEANUP_SECONDS,
+        )
+    if not exited:
+        _terminate_process_group(owner)
+        raise EvidenceError(
+            "signal-aware evidence wrapper did not complete nested cleanup"
+        )
+    return _terminate_process_group(owner)
+
+
+def _direct_child_pids() -> set[int]:
+    path = Path(f"/proc/self/task/{os.getpid()}/children")
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise EvidenceError(
+            "signal-aware evidence child inventory is unavailable"
+        ) from error
+    if len(payload) > 1024 * 1024:
+        raise EvidenceError("signal-aware evidence child inventory is unbounded")
+    try:
+        values = payload.decode("ascii").split()
+        children = {int(value) for value in values}
+    except (UnicodeDecodeError, ValueError) as error:
+        raise EvidenceError(
+            "signal-aware evidence child inventory is invalid"
+        ) from error
+    if any(child <= 1 for child in children):
+        raise EvidenceError("signal-aware evidence child identity is invalid")
+    return children
+
+
+def _assert_isolated_child_context() -> None:
+    _assert_one_kernel_thread()
+    try:
+        disposition = signal.getsignal(signal.SIGCHLD)
+    except (OSError, ValueError) as error:
+        raise EvidenceError(
+            "bounded evidence SIGCHLD disposition is unavailable"
+        ) from error
+    if disposition != signal.SIG_DFL:
+        raise EvidenceError(
+            "bounded evidence requires the default SIGCHLD disposition"
+        )
+    if _direct_child_pids():
+        raise EvidenceError(
+            "bounded evidence requires no pre-existing child processes"
+        )
+
+
+def _get_child_subreaper() -> bool:
+    libc = ctypes.CDLL(None, use_errno=True)
+    value = ctypes.c_int()
+    result = libc.prctl(
+        _PR_GET_CHILD_SUBREAPER,
+        ctypes.byref(value),
+        0,
+        0,
+        0,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno()
+        raise EvidenceError(
+            "signal-aware evidence subreaper state is unavailable "
+            f"(errno {error_number})"
+        )
+    return value.value != 0
+
+
+def _set_child_subreaper(enabled: bool) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    result = libc.prctl(
+        _PR_SET_CHILD_SUBREAPER,
+        int(enabled),
+        0,
+        0,
+        0,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno()
+        raise EvidenceError(
+            "signal-aware evidence subreaper state could not be changed "
+            f"(errno {error_number})"
+        )
+
+
+def _verify_waitable_child_status() -> None:
+    """Detect hidden SA_NOCLDWAIT before the first evidence command."""
+
+    with _SignalMaskScope(_catchable_signals()):
+        try:
+            child = os.fork()
+        except OSError as error:
+            raise EvidenceError(
+                "bounded evidence waitability canary could not start"
+            ) from error
+        if child == 0:
+            os._exit(0)
+
+        deadline = time.monotonic() + PROCESS_CLEANUP_SECONDS
+        flags = os.WEXITED | os.WNOHANG | os.WNOWAIT
+        while True:
+            try:
+                status = os.waitid(os.P_PID, child, flags)
+            except InterruptedError:
+                continue
+            except ChildProcessError as error:
+                raise EvidenceError(
+                    "SIGCHLD policy cannot retain child wait status"
+                ) from error
+            except OSError as error:
+                raise EvidenceError(
+                    "bounded evidence waitability canary could not be observed"
+                ) from error
+            if status is not None:
+                if status.si_pid != child:
+                    raise EvidenceError(
+                        "bounded evidence waitability canary identity changed"
+                    )
+                break
+            if time.monotonic() >= deadline:
+                raise EvidenceError(
+                    "bounded evidence waitability canary timed out"
+                )
+            time.sleep(0.01)
+        try:
+            waited_pid, waited_status = os.waitpid(child, 0)
+        except (ChildProcessError, OSError) as error:
+            raise EvidenceError(
+                "bounded evidence waitability canary could not be reaped"
+            ) from error
+        if (
+            waited_pid != child
+            or not os.WIFEXITED(waited_status)
+            or os.WEXITSTATUS(waited_status) != 0
+        ):
+            raise EvidenceError(
+                "bounded evidence waitability canary returned invalid status"
+            )
+
+
+def _signal_owned_direct_child(child: int) -> None:
+    """Signal one still-owned direct child without a PID-reuse window."""
+
+    with _SignalMaskScope(_catchable_signals()):
+        _assert_one_kernel_thread()
+        try:
+            status = os.waitid(
+                os.P_PID,
+                child,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            )
+        except ChildProcessError:
+            return
+        except OSError as error:
+            raise EvidenceError(
+                "adopted evidence child status could not be observed"
+            ) from error
+        if status is not None and status.si_pid != child:
+            raise EvidenceError(
+                "adopted evidence child status identity changed"
+            )
+        try:
+            process_group = os.getpgid(child)
+        except ProcessLookupError:
+            return
+        except OSError as error:
+            raise EvidenceError(
+                "adopted evidence child identity could not be read"
+            ) from error
+        try:
+            if process_group == child:
+                os.killpg(process_group, signal.SIGKILL)
+            else:
+                os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        except OSError as error:
+            raise EvidenceError(
+                "adopted evidence child could not be signalled"
+            ) from error
+
+
+def _reap_owned_direct_child(child: int) -> None:
+    with _SignalMaskScope(_catchable_signals()):
+        _assert_one_kernel_thread()
+        try:
+            waited_pid, _status = os.waitpid(child, os.WNOHANG)
+        except ChildProcessError:
+            return
+        except OSError as error:
+            raise EvidenceError(
+                "adopted evidence child could not be reaped"
+            ) from error
+        if waited_pid not in {0, child}:
+            raise EvidenceError(
+                "adopted evidence child reaping identity changed"
+            )
+
+
+def _kill_and_reap_direct_children() -> None:
+    deadline = time.monotonic() + ADOPTED_CHILD_CLEANUP_SECONDS
+    while True:
+        children = _direct_child_pids()
+        if not children:
+            return
+        for child in sorted(children):
+            _signal_owned_direct_child(child)
+        for child in sorted(children):
+            _reap_owned_direct_child(child)
+        if time.monotonic() >= deadline:
+            raise EvidenceError(
+                "adopted evidence children did not complete bounded cleanup"
+            )
+        time.sleep(0.01)
+
+
+class _ChildSubreaper:
+    """Process-local containment for every bounded evidence command."""
+
+    def __init__(self) -> None:
+        self._closed = False
+        self._entered = False
+        self._owns_slot = False
+        self._previous = False
+        self._restore_subreaper = False
+
+    def __enter__(self) -> _ChildSubreaper:
+        global _SUBREAPER_ACTIVE
+        primary: BaseException | None = None
+        cleanup: list[BaseException] = []
+        try:
+            with _SignalMaskScope(_catchable_signals()):
+                if _SUBREAPER_ACTIVE:
+                    raise EvidenceError(
+                        "bounded evidence subreaper scope is already active"
+                    )
+                _assert_isolated_child_context()
+                # Publish rollback ownership before mutating process-global
+                # state.
+                self._owns_slot = True
+                _SUBREAPER_ACTIVE = True
+                self._previous = _get_child_subreaper()
+                if not self._previous:
+                    self._restore_subreaper = True
+                    _set_child_subreaper(True)
+                _verify_waitable_child_status()
+                self._entered = True
+                return self
+        except BaseException as error:
+            primary = error
+        if self._owns_slot:
+            try:
+                with _SignalMaskScope(_catchable_signals()):
+                    try:
+                        _kill_and_reap_direct_children()
+                    except BaseException as error:
+                        cleanup.append(error)
+                    cleanup.extend(self._restore_previous_subreaper())
+                    self._release_slot_if_restored()
+            except BaseException as error:
+                cleanup.append(error)
+        if self._owns_slot and not self._restore_subreaper:
+            try:
+                with _SignalMaskScope(_catchable_signals()):
+                    self._release_slot_if_restored()
+            except BaseException as error:
+                cleanup.append(error)
+        _raise_preserving_failures(primary, cleanup)
+        raise AssertionError("unreachable")
+
+    def close(self) -> list[BaseException]:
+        if self._closed:
+            return []
+        errors: list[BaseException] = []
+        try:
+            with _SignalMaskScope(_catchable_signals()):
+                try:
+                    _kill_and_reap_direct_children()
+                except BaseException as error:
+                    errors.append(error)
+                errors.extend(self._restore_previous_subreaper())
+                self._release_slot_if_restored()
+        except BaseException as error:
+            errors.append(error)
+        if self._restore_subreaper:
+            errors.extend(self._restore_previous_subreaper())
+        if self._owns_slot and not self._restore_subreaper:
+            try:
+                with _SignalMaskScope(_catchable_signals()):
+                    self._release_slot_if_restored()
+            except BaseException as error:
+                errors.append(error)
+        if not self._owns_slot and not self._restore_subreaper:
+            self._closed = True
+        return errors
+
+    def _release_slot_if_restored(self) -> None:
+        global _SUBREAPER_ACTIVE
+        if self._owns_slot and not self._restore_subreaper:
+            _SUBREAPER_ACTIVE = False
+            self._owns_slot = False
+
+    def _restore_previous_subreaper(self) -> list[BaseException]:
+        if not self._restore_subreaper:
+            return []
+        errors: list[BaseException] = []
+        for _attempt in range(2):
+            try:
+                _set_child_subreaper(self._previous)
+            except BaseException as error:
+                errors.append(error)
+            try:
+                restored = (
+                    _get_child_subreaper() == self._previous
+                )
+            except BaseException as error:
+                errors.append(error)
+                continue
+            if restored:
+                self._restore_subreaper = False
+                break
+        if self._restore_subreaper:
+            errors.append(
+                EvidenceError(
+                    "bounded evidence subreaper state could not be restored"
+                )
+            )
+        return errors
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> bool:
+        del exc_type, traceback
+        cleanup = self.close()
+        if cleanup:
+            _raise_preserving_failures(exc_value, cleanup)
+        return False
+
+
+def _raise_preserving_failures(
+    primary: BaseException | None,
+    cleanup: list[BaseException],
+) -> None:
+    failures = ([] if primary is None else [primary]) + cleanup
+    if not failures:
+        return
+    if len(failures) == 1:
+        raise failures[0]
+    raise BaseExceptionGroup(
+        "evidence command and cleanup failures",
+        failures,
+    )
 
 
 def _run_bounded(
@@ -654,14 +1386,25 @@ def _run_bounded(
     cwd: Path,
     env: Mapping[str, str],
     fixed_command_no_detach: bool,
+    signal_aware_wrapper: bool = False,
     timeout_seconds: float = COMMAND_TIMEOUT_SECONDS,
     stream_limit: int = MAX_STREAM_BYTES,
 ) -> CommandResult:
-    """Run one fixed no-detach command with bounded original-group cleanup."""
+    """Run one fixed command under exactly one bounded cleanup contract."""
 
-    if fixed_command_no_detach is not True:
+    if not (
+        (
+            fixed_command_no_detach is True
+            and signal_aware_wrapper is False
+        )
+        or (
+            fixed_command_no_detach is False
+            and signal_aware_wrapper is True
+        )
+    ):
         raise EvidenceError(
-            "bounded runner requires a fixed no-detach command contract"
+            "bounded runner requires a no-detach or signal-aware wrapper "
+            "cleanup contract"
         )
     if not command or any(
         type(argument) is not str
@@ -674,7 +1417,41 @@ def _run_bounded(
         raise EvidenceError("synthetic evidence command is invalid")
     if timeout_seconds <= 0 or stream_limit <= 0:
         raise EvidenceError("command limits must be positive")
+
+    with _TerminationSignalScope() as termination:
+        with _ChildSubreaper():
+            return _run_bounded_contained(
+                command,
+                cwd=cwd,
+                env=env,
+                signal_aware_wrapper=signal_aware_wrapper,
+                termination=termination,
+                timeout_seconds=timeout_seconds,
+                stream_limit=stream_limit,
+            )
+
+
+def _run_bounded_contained(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    signal_aware_wrapper: bool,
+    termination: _TerminationSignalScope,
+    timeout_seconds: float,
+    stream_limit: int,
+) -> CommandResult:
+    selector: selectors.BaseSelector | None = None
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    deadline = time.monotonic() + timeout_seconds
+    primary_error: BaseException | None = None
+    cleanup_errors: list[BaseException] = []
+    returncode: int | None = None
+    command_exited = False
+    process: subprocess.Popen[bytes] | None = None
+    owner: _OwnedProcess | None = None
     try:
+        termination.raise_if_requested()
         process = subprocess.Popen(
             command,
             cwd=cwd,
@@ -686,18 +1463,19 @@ def _run_bounded(
             shell=False,
             close_fds=True,
         )
-    except OSError as error:
-        raise EvidenceError("synthetic evidence command could not start") from error
-
-    assert process.stdout is not None
-    assert process.stderr is not None
-    selector = selectors.DefaultSelector()
-    buffers = {"stdout": bytearray(), "stderr": bytearray()}
-    deadline = time.monotonic() + timeout_seconds
-    try:
+        owner = _OwnedProcess(process)
+        if process.stdout is None or process.stderr is None:
+            raise EvidenceError("evidence process pipes are unavailable")
+        try:
+            selector = selectors.DefaultSelector()
+        except OSError as error:
+            raise EvidenceError(
+                "evidence process selector is unavailable"
+            ) from error
         selector.register(process.stdout, selectors.EVENT_READ, "stdout")
         selector.register(process.stderr, selectors.EVENT_READ, "stderr")
         while selector.get_map():
+            termination.raise_if_requested()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise EvidenceError("synthetic evidence command timed out")
@@ -718,21 +1496,68 @@ def _run_bounded(
                     raise EvidenceError(
                         "synthetic evidence command exceeded its output limit"
                     )
-        try:
-            returncode = process.wait(timeout=max(0.1, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired as error:
-            raise EvidenceError("synthetic evidence command timed out") from error
+        remaining = deadline - time.monotonic()
+        termination.raise_if_requested()
+        if not owner.observe(max(0.0, remaining)):
+            raise EvidenceError("synthetic evidence command timed out")
+        command_exited = True
+    except BaseException as error:
+        if process is None and isinstance(error, OSError):
+            primary_error = EvidenceError(
+                "synthetic evidence command could not start"
+            )
+            primary_error.__cause__ = error
+        else:
+            primary_error = error
     finally:
-        try:
-            selector.close()
-        finally:
+        if selector is not None:
+            try:
+                selector.close()
+            except BaseException as error:
+                cleanup_errors.append(
+                    EvidenceError("evidence selector cleanup failed")
+                )
+                cleanup_errors[-1].__cause__ = error
+        if process is not None and process.stdout is not None:
             try:
                 process.stdout.close()
-            finally:
+            except BaseException as error:
+                cleanup_errors.append(
+                    EvidenceError("evidence stdout cleanup failed")
+                )
+                cleanup_errors[-1].__cause__ = error
+        if process is not None and process.stderr is not None:
+            try:
+                process.stderr.close()
+            except BaseException as error:
+                cleanup_errors.append(
+                    EvidenceError("evidence stderr cleanup failed")
+                )
+                cleanup_errors[-1].__cause__ = error
+        if process is not None:
+            if owner is None:
+                owner = _OwnedProcess(process)
+            if owner.ownership_lost:
+                cleanup_errors.append(
+                    EvidenceError(
+                        "process group cleanup was skipped after ownership loss"
+                    )
+                )
+            else:
                 try:
-                    process.stderr.close()
-                finally:
-                    _terminate_process_group(process)
+                    if signal_aware_wrapper:
+                        returncode = _terminate_signal_aware_wrapper(
+                            owner,
+                            already_exited=command_exited,
+                        )
+                    else:
+                        returncode = _terminate_process_group(owner)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+
+    _raise_preserving_failures(primary_error, cleanup_errors)
+    if returncode is None:
+        raise EvidenceError("evidence process return code is unavailable")
     return CommandResult(
         returncode=returncode,
         stdout=bytes(buffers["stdout"]),
@@ -947,6 +1772,139 @@ def _run_deterministic_pair() -> DemoRun:
         return first
 
 
+def _validate_media_receipt(payload: bytes) -> dict[str, Any]:
+    if not payload or len(payload) > MAX_RESULT_BYTES:
+        raise EvidenceError("media receipt exceeds its byte limit")
+    try:
+        receipt = json.loads(payload)
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as error:
+        raise EvidenceError("media receipt is not valid bounded JSON") from error
+    if not isinstance(receipt, dict):
+        raise EvidenceError("media receipt must be an object")
+
+    from alpr_runner.media_probe import (
+        FFMPEG_SHA256,
+        FRAME_COUNT,
+        NORMALIZED_COMMAND,
+        RGB_BYTES,
+        RGB_SHA256,
+        RGB_UNIQUE_COLORS,
+        canonical_json,
+    )
+
+    if payload != canonical_json(receipt):
+        raise EvidenceError("media receipt is not canonical JSON")
+    boundary = receipt.get("boundary")
+    decoded = receipt.get("decoded_rgb")
+    determinism = receipt.get("determinism")
+    runtime = receipt.get("runtime")
+    supervisor = receipt.get("supervisor")
+    if boundary != {
+        "camera_used": False,
+        "external_sdk_used": False,
+        "performance_measured": False,
+        "recognition_accuracy": "not_evaluated",
+        "recognition_performed": False,
+        "synthetic_media_used": True,
+    }:
+        raise EvidenceError("media receipt boundary changed")
+    if (
+        not isinstance(decoded, dict)
+        or decoded.get("bytes") != RGB_BYTES
+        or decoded.get("frame_count") != FRAME_COUNT
+        or decoded.get("sha256") != RGB_SHA256
+        or decoded.get("unique_colors") != RGB_UNIQUE_COLORS
+    ):
+        raise EvidenceError("media receipt RGB identity changed")
+    if (
+        not isinstance(determinism, dict)
+        or determinism.get("probe_runs") != 2
+        or determinism.get("byte_identical_rgb_runs") != 2
+        or determinism.get("byte_identical_supervisor_receipts") != 2
+    ):
+        raise EvidenceError("media receipt determinism changed")
+    if (
+        not isinstance(runtime, dict)
+        or runtime.get("command") != list(NORMALIZED_COMMAND)
+    ):
+        raise EvidenceError("media receipt command changed")
+    ffmpeg = runtime.get("ffmpeg")
+    if not isinstance(ffmpeg, dict) or ffmpeg.get("sha256") != FFMPEG_SHA256:
+        raise EvidenceError("media receipt FFmpeg identity changed")
+    if (
+        not isinstance(supervisor, dict)
+        or supervisor.get("frames_delivered") != FRAME_COUNT
+        or supervisor.get("state") != "ended"
+        or supervisor.get("exit_code") != 0
+        or supervisor.get("stderr_bytes") != 0
+        or supervisor.get("process_reaped") is not True
+        or supervisor.get("process_group_closed") is not True
+    ):
+        raise EvidenceError("media receipt lifecycle changed")
+    return receipt
+
+
+def _run_media_pair() -> MediaRun:
+    completed: list[CommandResult] = []
+    for _run in range(2):
+        result = _run_bounded(
+            list(MEDIA_COMMAND_DISPLAY),
+            cwd=REPOSITORY,
+            env=_demo_environment(),
+            fixed_command_no_detach=False,
+            signal_aware_wrapper=True,
+            timeout_seconds=30.0,
+            stream_limit=MAX_STREAM_BYTES,
+        )
+        if result.returncode != 0:
+            raise EvidenceError("media evidence command failed")
+        if result.stderr:
+            raise EvidenceError("media evidence command wrote to stderr")
+        completed.append(result)
+    if completed[0].stdout != completed[1].stdout:
+        raise EvidenceError("media CLI receipt is not deterministic")
+    receipt = _validate_media_receipt(completed[0].stdout)
+
+    from alpr_runner.media_probe import MediaProbeError, run_reproducible_probe
+    from alpr_runner.synthetic_media import HEIGHT, WIDTH
+
+    try:
+        direct = run_reproducible_probe(REPOSITORY)
+    except MediaProbeError as error:
+        raise EvidenceError("media frame derivation failed safely") from error
+    if direct.canonical_receipt() != completed[0].stdout:
+        raise EvidenceError("media CLI receipt differs from decoded frames")
+    if direct.receipt != receipt:
+        raise EvidenceError("media receipt object differs from decoded frames")
+    decoded = receipt["decoded_rgb"]
+    frame_hashes = tuple(_sha256(frame) for frame in direct.frames)
+    expected_hashes = decoded.get("frame_sha256")
+    raw_rgb = b"".join(direct.frames)
+    unique_colors = {
+        raw_rgb[offset : offset + 3]
+        for offset in range(0, len(raw_rgb), 3)
+    }
+    if (
+        len(direct.frames) != decoded["frame_count"]
+        or any(len(frame) != WIDTH * HEIGHT * 3 for frame in direct.frames)
+        or list(frame_hashes) != expected_hashes
+        or len(raw_rgb) != decoded["bytes"]
+        or _sha256(raw_rgb) != decoded["sha256"]
+        or len(unique_colors) != decoded["unique_colors"]
+    ):
+        raise EvidenceError("media decoded frames differ from their receipt")
+    return MediaRun(
+        stdout=completed[0].stdout,
+        receipt=receipt,
+        frames=direct.frames,
+    )
+
+
 def _svg_document(
     *,
     slug: str,
@@ -1036,6 +1994,320 @@ def _terminal_svg(transcript: str) -> bytes:
         ),
         width=1120,
         height=455,
+        body="\n".join(body),
+    )
+
+
+def _media_terminal_svg(receipt: Mapping[str, Any]) -> bytes:
+    decoded = receipt["decoded_rgb"]
+    frame = receipt["source"]["frame"]
+    ffmpeg = receipt["runtime"]["ffmpeg"]
+    supervisor = receipt["supervisor"]
+    command = "$ " + " ".join(MEDIA_COMMAND_DISPLAY)
+    lines = [
+        command,
+        "boundary.recognition_performed = false",
+        (
+            "decoded_rgb = "
+            f"{decoded['frame_count']} frames · {decoded['bytes']:,} bytes · "
+            f"{frame['width']}×{frame['height']} @ {frame['fps']} fps"
+        ),
+        f"decoded_rgb.sha256 = {decoded['sha256']}",
+        f"runtime.ffmpeg = {ffmpeg['version']} · {ffmpeg['sha256']}",
+        (
+            "supervisor = exit 0 · stderr 0 B · "
+            f"reaped {str(supervisor['process_reaped']).lower()} · "
+            "group closed "
+            f"{str(supervisor['process_group_closed']).lower()}"
+        ),
+        "# exit=0",
+    ]
+    body = [
+        '  <rect x="30" y="30" width="1060" height="400" rx="12" fill="#101a2a" stroke="#31415c"/>',
+        '  <circle cx="55" cy="53" r="6" fill="#ff6b6b"/>',
+        '  <circle cx="76" cy="53" r="6" fill="#ffd166"/>',
+        '  <circle cx="97" cy="53" r="6" fill="#5bd68b"/>',
+        _text(
+            550,
+            58,
+            "verified real FFmpeg delivery CLI",
+            size=14,
+            fill="#9fb3cc",
+            anchor="middle",
+        ),
+    ]
+    for index, line in enumerate(lines):
+        body.append(
+            _text(
+                52,
+                96 + index * 43,
+                line,
+                size=13,
+                fill="#8ce99a" if index in {0, len(lines) - 1} else "#d9e6f5",
+                family="ui-monospace, SFMono-Regular, Menlo, monospace",
+            )
+        )
+    body.extend(
+        [
+            _text(
+                550,
+                463,
+                "Selected exact fields · full canonical JSON and TXT are linked",
+                size=15,
+                fill="#86b7ff",
+                weight=650,
+                anchor="middle",
+            ),
+            _text(
+                550,
+                490,
+                "Frame delivery only — no detection, recognition, accuracy, or performance claim",
+                size=14,
+                fill="#ffd166",
+                weight=650,
+                anchor="middle",
+            ),
+        ]
+    )
+    return _svg_document(
+        slug="media-terminal",
+        title="Pinned FFmpeg media receipt",
+        description=(
+            "A terminal-style rendering of selected exact fields from the "
+            "canonical public media CLI receipt. The adjacent text artifact "
+            "contains the complete stdout. The probe performs frame delivery "
+            "only and does not run recognition."
+        ),
+        width=1120,
+        height=520,
+        body="\n".join(body),
+    )
+
+
+def _media_architecture_svg(receipt: Mapping[str, Any]) -> bytes:
+    source = receipt["source"]
+    decoded = receipt["decoded_rgb"]
+    runtime = receipt["runtime"]
+    supervisor = receipt["supervisor"]
+    boxes = [
+        (
+            "Numeric recipe",
+            f"{source['recipe']['bytes']:,} B",
+            source["recipe"]["sha256"][:12] + "…",
+        ),
+        (
+            "stdlib Y4M",
+            f"{source['y4m']['bytes']:,} B",
+            source["y4m"]["sha256"][:12] + "…",
+        ),
+        (
+            "Sealed input FD",
+            "write-sealed memfd",
+            "path not reopened",
+        ),
+        (
+            "Pinned FFmpeg",
+            runtime["ffmpeg"]["version"],
+            "sealed executable",
+        ),
+        (
+            "Frame supervisor",
+            f"{supervisor['frames_delivered']} × RGB24",
+            "bounded + reaped",
+        ),
+        (
+            "Decoded RGB",
+            f"{decoded['bytes']:,} B",
+            decoded["sha256"][:12] + "…",
+        ),
+    ]
+    body = [
+        _text(45, 48, "Verified media delivery architecture", size=24, weight=700),
+        _text(
+            45,
+            78,
+            "ARCHITECTURE — explanatory diagram, not runtime proof",
+            size=15,
+            fill="#ffd166",
+            weight=700,
+        ),
+    ]
+    for index, (title, first, second) in enumerate(boxes):
+        x = 30 + index * 181
+        body.extend(
+            [
+                f'  <rect x="{x}" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>',
+                _text(x + 77, 170, title, size=14, weight=700, anchor="middle"),
+                _text(
+                    x + 77,
+                    204,
+                    first,
+                    size=12,
+                    fill="#8ce99a",
+                    weight=650,
+                    anchor="middle",
+                ),
+                _text(
+                    x + 77,
+                    230,
+                    second,
+                    size=11,
+                    fill="#9fb3cc",
+                    anchor="middle",
+                ),
+            ]
+        )
+        if index < len(boxes) - 1:
+            body.extend(
+                [
+                    f'  <line x1="{x + 157}" y1="196" x2="{x + 174}" y2="196" stroke="#86b7ff" stroke-width="3"/>',
+                    f'  <path d="M {x + 168} 190 L {x + 176} 196 L {x + 168} 202" fill="none" stroke="#86b7ff" stroke-width="3"/>',
+                ]
+            )
+    body.extend(
+        [
+            '  <rect x="70" y="306" width="980" height="70" rx="12" fill="#0d2132" stroke="#355575"/>',
+            _text(
+                560,
+                336,
+                (
+                    f"Executed clean path: {decoded['frame_count']} exact "
+                    f"{source['frame']['width']}×{source['frame']['height']} "
+                    f"frames · RGB SHA-256 {decoded['sha256']}"
+                ),
+                size=13,
+                fill="#8ce99a",
+                weight=650,
+                anchor="middle",
+            ),
+            _text(
+                560,
+                361,
+                "Runtime proof lives in the canonical receipt and lossless decoded-frame artifacts",
+                size=14,
+                fill="#dce8f7",
+                anchor="middle",
+            ),
+            '  <rect x="190" y="407" width="740" height="55" rx="12" fill="#2a1d18" stroke="#8f654a"/>',
+            _text(
+                560,
+                440,
+                "Boundary: synthetic frame delivery only · DTK and recognition are never executed",
+                size=14,
+                fill="#ffd166",
+                weight=700,
+                anchor="middle",
+            ),
+        ]
+    )
+    return _svg_document(
+        slug="media-architecture",
+        title="Verified media delivery architecture",
+        description=(
+            "An explanatory architecture diagram showing the byte path from "
+            "the numeric recipe through standard-library Y4M rendering, sealed "
+            "descriptors, the pinned FFmpeg executable, production supervision, "
+            "and exact RGB receipt-bound artifacts. DTK recognition is outside "
+            "the executed boundary."
+        ),
+        width=1120,
+        height=500,
+        body="\n".join(body),
+    )
+
+
+def _media_failure_svg(receipt: Mapping[str, Any]) -> bytes:
+    limits = receipt["supervisor_limits"]
+    supervisor = receipt["supervisor"]
+    body = [
+        _text(45, 48, "Media lifecycle and failure boundary", size=24, weight=700),
+        _text(
+            45,
+            78,
+            "FAILURE MODEL — clean branch runtime-verified; failure branches explanatory",
+            size=15,
+            fill="#ffd166",
+            weight=700,
+        ),
+        '  <rect x="40" y="118" width="1040" height="108" rx="14" fill="#102c27" stroke="#58d6a8" stroke-width="2"/>',
+        _text(66, 148, "EXECUTED CLEAN BRANCH", size=14, fill="#8ce99a", weight=800),
+        _text(
+            66,
+            181,
+            (
+                f"{supervisor['frames_delivered']} full frames → EOF / exit "
+                f"{supervisor['exit_code']} → process group quiescent → "
+                "private workspaces removed"
+            ),
+            size=15,
+            weight=650,
+        ),
+        _text(
+            66,
+            207,
+            "Receipt: stderr 0 B · leader reaped true · group closed true · termination none",
+            size=13,
+            fill="#b9cce2",
+        ),
+        '  <rect x="40" y="254" width="1040" height="154" rx="14" fill="#261d24" stroke="#c2789b" stroke-width="2"/>',
+        _text(66, 286, "EXPLANATORY FAIL-CLOSED BRANCH", size=14, fill="#ff9bc2", weight=800),
+        _text(
+            66,
+            320,
+            "invalid binding · startup/idle timeout · stderr cap · partial frame · caller cancellation",
+            size=14,
+            weight=650,
+        ),
+        _text(
+            66,
+            354,
+            (
+                "retain owned handles → request TERM "
+                f"≤ {limits['terminate_timeout_seconds']:.0f}s → "
+                f"KILL ≤ {limits['kill_timeout_seconds']:.0f}s if needed → "
+                "reap → safe path-free error"
+            ),
+            size=14,
+            fill="#dce8f7",
+        ),
+        _text(
+            66,
+            384,
+            "Uncertain descriptor cleanup remains explicitly retryable; foreign replacement slots are not closed",
+            size=13,
+            fill="#b9cce2",
+        ),
+        '  <rect x="160" y="440" width="800" height="62" rx="12" fill="#2a1d18" stroke="#8f654a"/>',
+        _text(
+            560,
+            466,
+            "Outside graceful cleanup: SIGKILL · os._exit · interpreter/native crash · kernel failure",
+            size=13,
+            fill="#ffd166",
+            weight=700,
+            anchor="middle",
+        ),
+        _text(
+            560,
+            489,
+            "No diagram branch claims detection, recognition, accuracy, throughput, or camera compatibility",
+            size=13,
+            fill="#dce8f7",
+            anchor="middle",
+        ),
+    ]
+    return _svg_document(
+        slug="media-failure",
+        title="Media lifecycle and failure boundary",
+        description=(
+            "Runtime checks establish exact frames, clean exit, process "
+            "reaping, group closure, and workspace removal; the public receipt "
+            "records the bounded process facts. Explanatory branches summarize "
+            "retry and escalation contracts plus failures outside graceful "
+            "cleanup."
+        ),
+        width=1120,
+        height=535,
         body="\n".join(body),
     )
 
@@ -1323,11 +2595,11 @@ def _architecture_svg() -> bytes:
 
 def _setup_workflow_svg() -> bytes:
     steps = [
-        ("1", "Python 3.12", "standard library only"),
-        ("2", "Canonical fixture", "5 fake events"),
-        ("3", "Run twice", "private mode 0700"),
-        ("4", "Validate", "privacy + SVG + hashes"),
-        ("5", "Check", "byte-current bundle"),
+        ("1", "Python 3.12", "stdlib renderer"),
+        ("2", "Locked FFmpeg", "repo-local .t runtime"),
+        ("3", "Run both lanes", "events + real RGB"),
+        ("4", "Validate", "pixels + privacy + hashes"),
+        ("5", "Check", "15 byte-current files"),
     ]
     body = [
         _text(48, 48, "Evidence reproduction workflow", size=24, weight=700),
@@ -1382,7 +2654,7 @@ def _setup_workflow_svg() -> bytes:
             _text(
                 560,
                 359,
-                "No SDK, camera, model, network access, or third-party Python package",
+                "No SDK, camera, model, license, personal media, or third-party Python import",
                 size=14,
                 fill="#dce8f7",
                 anchor="middle",
@@ -1394,7 +2666,8 @@ def _setup_workflow_svg() -> bytes:
         title="Evidence reproduction workflow",
         description=(
             "An explanatory five-step workflow for reproducing and checking "
-            "the synthetic event evidence with Python 3.12."
+            "the synthetic event and pinned FFmpeg media evidence with Python "
+            "3.12 and the repository-local hash-locked runtime."
         ),
         width=1120,
         height=420,
@@ -1408,6 +2681,17 @@ def _terminal_transcript(stdout: bytes) -> bytes:
     except UnicodeDecodeError as error:
         raise EvidenceError("synthetic CLI output is not ASCII") from error
     command = " ".join(COMMAND_DISPLAY)
+    return (f"$ {command}\n{output}# exit=0\n").encode("ascii")
+
+
+def _media_transcript(stdout: bytes) -> bytes:
+    try:
+        output = stdout.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise EvidenceError("media CLI receipt is not ASCII") from error
+    if not output.endswith("\n"):
+        raise EvidenceError("media CLI receipt is missing its final newline")
+    command = " ".join(MEDIA_COMMAND_DISPLAY)
     return (f"$ {command}\n{output}# exit=0\n").encode("ascii")
 
 
@@ -1552,9 +2836,99 @@ def _privacy_scan(name: str, payload: bytes) -> None:
             raise EvidenceError(f"{name} contains host identity metadata")
 
 
-def _build_nonmanifest_outputs(run: DemoRun) -> dict[str, bytes]:
+def _maximum_output_bytes(name: str) -> int:
+    if name == MEDIA_CONTACT_SHEET_PNG:
+        return MAX_PNG_BYTES
+    if name == MEDIA_GIF:
+        return MAX_GIF_BYTES
+    if name in SVG_NAMES:
+        return MAX_SVG_BYTES
+    if name in {TERMINAL_TRANSCRIPT, MEDIA_TRANSCRIPT}:
+        return MAX_STREAM_BYTES
+    if name in {RUNTIME_RESULT, MEDIA_RECEIPT, MANIFEST_NAME}:
+        return MAX_RESULT_BYTES
+    raise EvidenceError(f"{name} has no output byte limit")
+
+
+def _validate_contact_sheet_pixels(
+    pixels: bytes,
+    frames: tuple[bytes, ...],
+) -> None:
+    source_width = 160
+    source_height = 96
+    output_width = source_width * 2 * 3
+    if len(pixels) != output_width * source_height * 2 * 3:
+        raise EvidenceError("contact-sheet pixel byte count changed")
+    for panel, frame_index in enumerate((0, 8, 17)):
+        frame = frames[frame_index]
+        for source_y in range(source_height):
+            for source_x in range(source_width):
+                source_offset = (
+                    source_y * source_width + source_x
+                ) * 3
+                expected = frame[source_offset : source_offset + 3]
+                output_x = panel * source_width * 2 + source_x * 2
+                output_y = source_y * 2
+                for y_delta in (0, 1):
+                    for x_delta in (0, 1):
+                        output_offset = (
+                            (output_y + y_delta) * output_width
+                            + output_x
+                            + x_delta
+                        ) * 3
+                        if pixels[output_offset : output_offset + 3] != expected:
+                            raise EvidenceError(
+                                "contact-sheet pixels differ from decoded frames"
+                            )
+
+
+def _build_nonmanifest_outputs(
+    run: DemoRun,
+    media: MediaRun,
+) -> dict[str, bytes]:
+    from tools.evidence_media_codec import (
+        GIF_DELAYS_CS,
+        EvidenceMediaCodecError,
+        decode_lossless_gif,
+        decode_rgb_png,
+        encode_contact_sheet_png,
+        encode_lossless_gif,
+    )
+
     transcript = _terminal_transcript(run.stdout)
     transcript_text = transcript.decode("ascii")
+    media_transcript = _media_transcript(media.stdout)
+    try:
+        contact_sheet = encode_contact_sheet_png(
+            media.frames,
+            width=160,
+            height=96,
+        )
+        animation = encode_lossless_gif(
+            media.frames,
+            width=160,
+            height=96,
+            delays_cs=GIF_DELAYS_CS,
+        )
+        if _sha256(animation) != PINNED_GIF_SHA256:
+            raise EvidenceError(
+                "lossless GIF differs from its externally decoded golden bytes"
+            )
+        png_width, png_height, png_pixels = decode_rgb_png(contact_sheet)
+        decoded_gif = decode_lossless_gif(animation)
+    except EvidenceMediaCodecError as error:
+        raise EvidenceError("lossless media encoding failed closed") from error
+    if (png_width, png_height) != (960, 192):
+        raise EvidenceError("contact-sheet dimensions changed")
+    _validate_contact_sheet_pixels(png_pixels, media.frames)
+    if (
+        (decoded_gif.width, decoded_gif.height) != (160, 96)
+        or decoded_gif.loop_count != 0
+        or decoded_gif.delays_cs != GIF_DELAYS_CS
+        or sum(decoded_gif.delays_cs) != 300
+        or decoded_gif.frames != media.frames
+    ):
+        raise EvidenceError("lossless GIF differs from decoded frames")
     outputs = {
         RUNTIME_RESULT: run.artifact,
         TERMINAL_TRANSCRIPT: transcript,
@@ -1563,10 +2937,21 @@ def _build_nonmanifest_outputs(run: DemoRun) -> dict[str, bytes]:
         ZOOM_GEOMETRY_SVG: _zoom_geometry_svg(run.result),
         ARCHITECTURE_SVG: _architecture_svg(),
         SETUP_SVG: _setup_workflow_svg(),
+        MEDIA_RECEIPT: media.stdout,
+        MEDIA_TRANSCRIPT: media_transcript,
+        MEDIA_TERMINAL_SVG: _media_terminal_svg(media.receipt),
+        MEDIA_CONTACT_SHEET_PNG: contact_sheet,
+        MEDIA_GIF: animation,
+        MEDIA_ARCHITECTURE_SVG: _media_architecture_svg(media.receipt),
+        MEDIA_FAILURE_SVG: _media_failure_svg(media.receipt),
     }
     if set(outputs) != set(OUTPUT_KINDS):
         raise EvidenceError("renderer output allowlist is inconsistent")
+    if set(OUTPUT_LANES) != set(OUTPUT_KINDS):
+        raise EvidenceError("renderer output lanes are inconsistent")
     for name, payload in outputs.items():
+        if len(payload) > _maximum_output_bytes(name):
+            raise EvidenceError(f"{name} exceeds its output byte limit")
         _privacy_scan(name, payload)
         if name in SVG_NAMES:
             _validate_svg(name, payload)
@@ -1576,6 +2961,7 @@ def _build_nonmanifest_outputs(run: DemoRun) -> dict[str, bytes]:
 def _build_manifest(
     inputs: tuple[dict[str, object], ...],
     outputs: Mapping[str, bytes],
+    media_run: MediaRun,
 ) -> bytes:
     output_records = []
     for name in sorted(outputs):
@@ -1584,44 +2970,77 @@ def _build_manifest(
             {
                 "bytes": len(payload),
                 "evidence_kind": OUTPUT_KINDS[name],
+                "lanes": list(OUTPUT_LANES[name]),
                 "path": (GENERATED_RELATIVE / name).as_posix(),
                 "sha256": _sha256(payload),
             }
         )
+    media_determinism = media_run.receipt["determinism"]
     manifest = {
-        "boundary": {
-            "camera_or_media_used": False,
-            "external_sdk_used": False,
-            "executes": [
-                "one canonical validated synthetic event trace",
-                "production cross-camera aggregation for that trace",
-                "production plate-to-target geometry for that trace",
-                "production per-camera software zoom geometry for that trace",
-                "deterministic evidence rendering for that trace",
-            ],
-            "recognition_accuracy": "not_evaluated",
-            "recognition_performed": False,
-            "throughput": "not_measured",
-        },
         "determinism": {
-            "byte_identical_cli_runs": 2,
-            "fixed_command": list(COMMAND_DISPLAY),
             "python_contract": "3.12",
             "source_hashes_stable_before_and_after": True,
-            "stdout_matches_canonical_summary": True,
-            "transcript_framing": (
-                "renderer-added path-normalized command and exit marker"
-            ),
         },
         "generated_tree": sorted(EXPECTED_GENERATED_NAMES),
         "inputs": list(inputs),
+        "lanes": {
+            "synthetic_events": {
+                "boundary": {
+                    "camera_or_media_used": False,
+                    "external_sdk_used": False,
+                    "executes": [
+                        "one canonical validated synthetic event trace",
+                        "production cross-camera aggregation for that trace",
+                        "production plate-to-target geometry for that trace",
+                        (
+                            "production per-camera software zoom geometry "
+                            "for that trace"
+                        ),
+                    ],
+                    "recognition_accuracy": "not_evaluated",
+                    "recognition_performed": False,
+                    "throughput": "not_measured",
+                },
+                "determinism": {
+                    "byte_identical_cli_runs": 2,
+                    "fixed_command": list(COMMAND_DISPLAY),
+                    "stdout_matches_canonical_summary": True,
+                    "transcript_framing": (
+                        "renderer-added path-normalized command and exit marker"
+                    ),
+                },
+                "outputs": sorted(EVENT_OUTPUT_NAMES),
+            },
+            "synthetic_media": {
+                "boundary": media_run.receipt["boundary"],
+                "determinism": {
+                    "byte_identical_public_cli_receipts": 2,
+                    "cli_receipt_equals_frame_capture_receipt": True,
+                    "fixed_command": list(MEDIA_COMMAND_DISPLAY),
+                    "lossless_rasters_from_decoded_frames": True,
+                    "probe_reported_byte_identical_rgb_runs": (
+                        media_determinism["byte_identical_rgb_runs"]
+                    ),
+                    "probe_reported_byte_identical_supervisor_receipts": (
+                        media_determinism[
+                            "byte_identical_supervisor_receipts"
+                        ]
+                    ),
+                    "probe_reported_byte_identical_y4m_renders": (
+                        media_determinism["byte_identical_y4m_renders"]
+                    ),
+                },
+                "outputs": sorted(MEDIA_OUTPUT_NAMES),
+                "receipt_sha256": _sha256(media_run.stdout),
+            },
+        },
         "manifest": {
             "path": (GENERATED_RELATIVE / MANIFEST_NAME).as_posix(),
             "self_hash": "excluded-by-design",
             "written_last": True,
         },
         "outputs": output_records,
-        "schema_version": 1,
+        "schema_version": 3,
     }
     payload = _canonical_json(manifest)
     _privacy_scan(MANIFEST_NAME, payload)
@@ -1833,11 +3252,7 @@ def _check(outputs: Mapping[str, bytes]) -> None:
         actual = _require_relative_file(
             GENERATED_DIRECTORY,
             Path(name),
-            maximum_bytes=max(
-                MAX_RESULT_BYTES,
-                MAX_SVG_BYTES,
-                MAX_SOURCE_BYTES,
-            ),
+            maximum_bytes=_maximum_output_bytes(name),
         )
         if actual != outputs[name]:
             raise EvidenceError(f"{name} is stale; run the renderer with --write")
@@ -1870,12 +3285,13 @@ def render(*, write: bool) -> None:
         raise EvidenceError("evidence renderer requires Python 3.12")
     _verify_fixture_contract()
     before = _snapshot_inputs()
-    run = _run_deterministic_pair()
-    nonmanifest = _build_nonmanifest_outputs(run)
+    event_run = _run_deterministic_pair()
+    media_run = _run_media_pair()
+    nonmanifest = _build_nonmanifest_outputs(event_run, media_run)
     after = _snapshot_inputs()
     if before != after:
         raise EvidenceError("evidence source inputs changed during rendering")
-    manifest = _build_manifest(before, nonmanifest)
+    manifest = _build_manifest(before, nonmanifest, media_run)
     outputs = {**nonmanifest, MANIFEST_NAME: manifest}
     for name, payload in outputs.items():
         _privacy_scan(name, payload)

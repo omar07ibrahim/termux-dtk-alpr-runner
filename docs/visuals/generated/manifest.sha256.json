@@ -1,39 +1,19 @@
 {
-  "boundary": {
-    "camera_or_media_used": false,
-    "executes": [
-      "one canonical validated synthetic event trace",
-      "production cross-camera aggregation for that trace",
-      "production plate-to-target geometry for that trace",
-      "production per-camera software zoom geometry for that trace",
-      "deterministic evidence rendering for that trace"
-    ],
-    "external_sdk_used": false,
-    "recognition_accuracy": "not_evaluated",
-    "recognition_performed": false,
-    "throughput": "not_measured"
-  },
   "determinism": {
-    "byte_identical_cli_runs": 2,
-    "fixed_command": [
-      "python3.12",
-      "-S",
-      "-m",
-      "alpr_runner.synthetic",
-      "--trace",
-      "examples/synthetic-events-v1.json",
-      "--out",
-      "PRIVATE-RUNTIME"
-    ],
     "python_contract": "3.12",
-    "source_hashes_stable_before_and_after": true,
-    "stdout_matches_canonical_summary": true,
-    "transcript_framing": "renderer-added path-normalized command and exit marker"
+    "source_hashes_stable_before_and_after": true
   },
   "generated_tree": [
     "architecture-boundary.svg",
+    "decoded-contact-sheet.png",
+    "decoded-rgb.gif",
     "event-flow.svg",
     "manifest.sha256.json",
+    "media-architecture.svg",
+    "media-cli-receipt.svg",
+    "media-cli-receipt.txt",
+    "media-failure-boundary.svg",
+    "media-receipt.json",
     "setup-workflow.svg",
     "synthetic-result.json",
     "terminal-evidence.svg",
@@ -52,9 +32,9 @@
       "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
     },
     {
-      "bytes": 12926,
+      "bytes": 16629,
       "path": "README.md",
-      "sha256": "ef8133697054934af1174ddb7390249f5df6a9dd85f2efbdbae89a23e87918b8"
+      "sha256": "684add3e5747c7be7f90460191b401aafd3c546c456ba6e4795663da436de0b7"
     },
     {
       "bytes": 60,
@@ -127,19 +107,19 @@
       "sha256": "5a786b80a6275e46665138faccf52b0044b9239cc0a49a03a5dd552577a6e6cb"
     },
     {
-      "bytes": 6047,
+      "bytes": 6207,
       "path": "docs/charter.md",
-      "sha256": "eceb340104acd21599b604fc832667891b7374c9cb46a27d2213d1e1d113cc04"
+      "sha256": "5943bd3e0ea9509239b3c9d63b61df1702e69e956ed8e481dfc3c65dccfb20ea"
     },
     {
-      "bytes": 6672,
+      "bytes": 7949,
       "path": "docs/media-evidence.md",
-      "sha256": "9a0d1db862e306dc05e14411a8973568f45773dcaa987862411edd44a1dba84c"
+      "sha256": "7f058a7a2a40bad6b2f8fdfd0c1f11ee874f513fc8ab2008304aa68458697a1e"
     },
     {
-      "bytes": 10809,
+      "bytes": 11397,
       "path": "docs/threat-model.md",
-      "sha256": "6460610ccb9bf0be5daf1bc328c33e811740af8d06f70643b27bcae3da7d7239"
+      "sha256": "7d72ec0c21c1194cacd85a872ce5efa224dabf02f808361358baab339eb59fef"
     },
     {
       "bytes": 1422,
@@ -167,6 +147,11 @@
       "sha256": "20d2a89e1c2c091a55a6b29895a41e9d2747e594683775dfcd04d7eee5d06284"
     },
     {
+      "bytes": 12965,
+      "path": "tests/test_evidence_media_codec.py",
+      "sha256": "b0349a4b38efb93c14cbcb5e3597c3cc5e3e1f43ae8f8079be8143b1b73be8ce"
+    },
+    {
       "bytes": 101164,
       "path": "tests/test_ffmpeg_io.py",
       "sha256": "a2ec57e5157633391b2343613fb7ee8f70cb8ee68efbef1c666158f403248a66"
@@ -192,9 +177,9 @@
       "sha256": "e155f551a501eac0145cff56bcaee4bb535b6faa98548198f811f5f3c387a820"
     },
     {
-      "bytes": 29891,
+      "bytes": 62263,
       "path": "tests/test_render_readme_visuals.py",
-      "sha256": "8f82ac8f15aba20fbec39b099d8dd310ca8a4ef97162c82dd543245fc5012de8"
+      "sha256": "ff819f9a93a5a905d15a2d8a7a3edb7cc649c54e23dcf6b7f9fa5ba437e30b09"
     },
     {
       "bytes": 12610,
@@ -217,16 +202,97 @@
       "sha256": "3e60dcfa50bf7405d72e681fc461ae4616222462f70c115c55442dce7f90ea0f"
     },
     {
+      "bytes": 20132,
+      "path": "tools/evidence_media_codec.py",
+      "sha256": "31597166857ea40ce7621cec9c326712bf3f70b53e0fad0a8c6b5625f4e1818c"
+    },
+    {
       "bytes": 1822,
       "path": "tools/probe_media.py",
       "sha256": "964f6644efe5e348c92cc53551b1f3fd8ec64f1990d9b2befdbb9d7a9b118b64"
     },
     {
-      "bytes": 68046,
+      "bytes": 117670,
       "path": "tools/render_readme_visuals.py",
-      "sha256": "5896fd4c526d3062a71fcacf69c1b9b4686bb9d67f69e2bc4676d6c22784f87b"
+      "sha256": "acc0dbd191446e5e965372fb82cd068b17259f1157baf1fab401d9584f496009"
     }
   ],
+  "lanes": {
+    "synthetic_events": {
+      "boundary": {
+        "camera_or_media_used": false,
+        "executes": [
+          "one canonical validated synthetic event trace",
+          "production cross-camera aggregation for that trace",
+          "production plate-to-target geometry for that trace",
+          "production per-camera software zoom geometry for that trace"
+        ],
+        "external_sdk_used": false,
+        "recognition_accuracy": "not_evaluated",
+        "recognition_performed": false,
+        "throughput": "not_measured"
+      },
+      "determinism": {
+        "byte_identical_cli_runs": 2,
+        "fixed_command": [
+          "python3.12",
+          "-S",
+          "-m",
+          "alpr_runner.synthetic",
+          "--trace",
+          "examples/synthetic-events-v1.json",
+          "--out",
+          "PRIVATE-RUNTIME"
+        ],
+        "stdout_matches_canonical_summary": true,
+        "transcript_framing": "renderer-added path-normalized command and exit marker"
+      },
+      "outputs": [
+        "architecture-boundary.svg",
+        "event-flow.svg",
+        "setup-workflow.svg",
+        "synthetic-result.json",
+        "terminal-evidence.svg",
+        "terminal-transcript.txt",
+        "zoom-geometry.svg"
+      ]
+    },
+    "synthetic_media": {
+      "boundary": {
+        "camera_used": false,
+        "external_sdk_used": false,
+        "performance_measured": false,
+        "recognition_accuracy": "not_evaluated",
+        "recognition_performed": false,
+        "synthetic_media_used": true
+      },
+      "determinism": {
+        "byte_identical_public_cli_receipts": 2,
+        "cli_receipt_equals_frame_capture_receipt": true,
+        "fixed_command": [
+          "python3.12",
+          "-S",
+          "tools/probe_media.py",
+          "--json"
+        ],
+        "lossless_rasters_from_decoded_frames": true,
+        "probe_reported_byte_identical_rgb_runs": 2,
+        "probe_reported_byte_identical_supervisor_receipts": 2,
+        "probe_reported_byte_identical_y4m_renders": 2
+      },
+      "outputs": [
+        "decoded-contact-sheet.png",
+        "decoded-rgb.gif",
+        "media-architecture.svg",
+        "media-cli-receipt.svg",
+        "media-cli-receipt.txt",
+        "media-failure-boundary.svg",
+        "media-receipt.json",
+        "setup-workflow.svg"
+      ],
+      "receipt_sha256": "c3a260f213ba3eff60dd79c15f49849f1fdfe38dc1b5714a7205367ef50f64ef"
+    }
+  },
   "manifest": {
     "path": "docs/visuals/generated/manifest.sha256.json",
     "self_hash": "excluded-by-design",
@@ -236,45 +302,130 @@
     {
       "bytes": 4087,
       "evidence_kind": "architecture-only",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/architecture-boundary.svg",
       "sha256": "1775d4269aa74fb3d3e68624f9006a9e4e8022f9c535271a5e2025d00c7a5cb5"
     },
     {
+      "bytes": 553260,
+      "evidence_kind": "runtime-derived-lossless",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/decoded-contact-sheet.png",
+      "sha256": "3b49a40a9da92931445824915f2c88fe62f28a290182d671117d942635e97a03"
+    },
+    {
+      "bytes": 251073,
+      "evidence_kind": "runtime-derived-lossless",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/decoded-rgb.gif",
+      "sha256": "8809951ca71a11d19351d6bb82478f363ffbb17b5f68378869121b8a074c46e1"
+    },
+    {
       "bytes": 7560,
       "evidence_kind": "runtime-derived",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/event-flow.svg",
       "sha256": "2e15e3258e351eaa8a5520b895093629e026a83d658726c439ed8bdbbfc3f6ed"
     },
     {
-      "bytes": 5236,
+      "bytes": 6440,
+      "evidence_kind": "architecture-only",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/media-architecture.svg",
+      "sha256": "fd93399d1d86479520fd0fc4062b5587fa2e4e522e962850f4846d308424f36d"
+    },
+    {
+      "bytes": 3036,
+      "evidence_kind": "runtime-derived-normalized",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/media-cli-receipt.svg",
+      "sha256": "065b3d2f471c77e4ef2201116aa82769c526b77d36ce95ebf088a085746746a1"
+    },
+    {
+      "bytes": 4309,
+      "evidence_kind": "runtime-derived-normalized",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/media-cli-receipt.txt",
+      "sha256": "62cd7ceb307493f7c6fcb8de70cb83be107ee812186ea2d3f1e9da74fc6b8fee"
+    },
+    {
+      "bytes": 3410,
+      "evidence_kind": "architecture-only",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/media-failure-boundary.svg",
+      "sha256": "49a285cfee402fe3d46d9c50c8e4b08d21878e69dcc2d84c6c4416d6201ba35f"
+    },
+    {
+      "bytes": 4256,
+      "evidence_kind": "runtime-derived",
+      "lanes": [
+        "synthetic_media"
+      ],
+      "path": "docs/visuals/generated/media-receipt.json",
+      "sha256": "c3a260f213ba3eff60dd79c15f49849f1fdfe38dc1b5714a7205367ef50f64ef"
+    },
+    {
+      "bytes": 5321,
       "evidence_kind": "workflow-only",
+      "lanes": [
+        "synthetic_events",
+        "synthetic_media"
+      ],
       "path": "docs/visuals/generated/setup-workflow.svg",
-      "sha256": "0fdd7a356505b1003e14a4ce63aa0d03627eadc32e88188b559e472cfecdf4f0"
+      "sha256": "af9f82360bdddef7e7deed727c595af48a65ff47b901fc5175d8e107f99a8360"
     },
     {
       "bytes": 12458,
       "evidence_kind": "runtime-derived",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/synthetic-result.json",
       "sha256": "c60808d5f962040bb47b91bb3b7d1e8f2c0effc9f4113e4f2bc615ef71eb6a8c"
     },
     {
       "bytes": 3451,
       "evidence_kind": "runtime-derived-normalized",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/terminal-evidence.svg",
       "sha256": "8e706f3735a7871f36b8569c46ead101a53a5570d681502f94e3dd8f7bf0b623"
     },
     {
       "bytes": 443,
       "evidence_kind": "runtime-derived-normalized",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/terminal-transcript.txt",
       "sha256": "1a1fa87aa569a23d2a0a76d9b2b38f67f5030e9c8601c0de381c1e8e1906b28b"
     },
     {
       "bytes": 3234,
       "evidence_kind": "runtime-derived",
+      "lanes": [
+        "synthetic_events"
+      ],
       "path": "docs/visuals/generated/zoom-geometry.svg",
       "sha256": "445c91a5b6658d0c5a5fe74f7f1dc046dac33a07c9b40217afa096e61e81b432"
     }
   ],
-  "schema_version": 1
+  "schema_version": 3
 }

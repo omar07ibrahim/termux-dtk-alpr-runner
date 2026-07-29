@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="500" viewBox="0 0 1120 500" role="img" aria-labelledby="media-architecture-title media-architecture-description">
+  <title id="media-architecture-title">Verified media delivery architecture</title>
+  <desc id="media-architecture-description">An explanatory architecture diagram showing the byte path from the numeric recipe through standard-library Y4M rendering, sealed descriptors, the pinned FFmpeg executable, production supervision, and exact RGB receipt-bound artifacts. DTK recognition is outside the executed boundary.</desc>
+  <rect width="1120" height="500" rx="18" fill="#08111f"/>
+  <text x="45.00" y="48.00" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#dce8f7" text-anchor="start">Verified media delivery architecture</text>
+  <text x="45.00" y="78.00" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffd166" text-anchor="start">ARCHITECTURE — explanatory diagram, not runtime proof</text>
+  <rect x="30" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="107.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">Numeric recipe</text>
+  <text x="107.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">1,288 B</text>
+  <text x="107.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">ab8d7a7518d3…</text>
+  <line x1="187" y1="196" x2="204" y2="196" stroke="#86b7ff" stroke-width="3"/>
+  <path d="M 198 190 L 206 196 L 198 202" fill="none" stroke="#86b7ff" stroke-width="3"/>
+  <rect x="211" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="288.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">stdlib Y4M</text>
+  <text x="288.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">414,869 B</text>
+  <text x="288.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">7614365d1342…</text>
+  <line x1="368" y1="196" x2="385" y2="196" stroke="#86b7ff" stroke-width="3"/>
+  <path d="M 379 190 L 387 196 L 379 202" fill="none" stroke="#86b7ff" stroke-width="3"/>
+  <rect x="392" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="469.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">Sealed input FD</text>
+  <text x="469.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">write-sealed memfd</text>
+  <text x="469.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">path not reopened</text>
+  <line x1="549" y1="196" x2="566" y2="196" stroke="#86b7ff" stroke-width="3"/>
+  <path d="M 560 190 L 568 196 L 560 202" fill="none" stroke="#86b7ff" stroke-width="3"/>
+  <rect x="573" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="650.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">Pinned FFmpeg</text>
+  <text x="650.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">7.0.2-static</text>
+  <text x="650.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">sealed executable</text>
+  <line x1="730" y1="196" x2="747" y2="196" stroke="#86b7ff" stroke-width="3"/>
+  <path d="M 741 190 L 749 196 L 741 202" fill="none" stroke="#86b7ff" stroke-width="3"/>
+  <rect x="754" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="831.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">Frame supervisor</text>
+  <text x="831.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">18 × RGB24</text>
+  <text x="831.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">bounded + reaped</text>
+  <line x1="911" y1="196" x2="928" y2="196" stroke="#86b7ff" stroke-width="3"/>
+  <path d="M 922 190 L 930 196 L 922 202" fill="none" stroke="#86b7ff" stroke-width="3"/>
+  <rect x="935" y="132" width="154" height="128" rx="13" fill="#12243a" stroke="#4a6688" stroke-width="2"/>
+  <text x="1012.00" y="170.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#dce8f7" text-anchor="middle">Decoded RGB</text>
+  <text x="1012.00" y="204.00" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="650" fill="#8ce99a" text-anchor="middle">829,440 B</text>
+  <text x="1012.00" y="230.00" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9fb3cc" text-anchor="middle">51ccea55540f…</text>
+  <rect x="70" y="306" width="980" height="70" rx="12" fill="#0d2132" stroke="#355575"/>
+  <text x="560.00" y="336.00" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="650" fill="#8ce99a" text-anchor="middle">Executed clean path: 18 exact 160×96 frames · RGB SHA-256 51ccea55540f6c8e8e67ecd8ea11ba5a8f16f75f2b8cff438146090b171cc21a</text>
+  <text x="560.00" y="361.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#dce8f7" text-anchor="middle">Runtime proof lives in the canonical receipt and lossless decoded-frame artifacts</text>
+  <rect x="190" y="407" width="740" height="55" rx="12" fill="#2a1d18" stroke="#8f654a"/>
+  <text x="560.00" y="440.00" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffd166" text-anchor="middle">Boundary: synthetic frame delivery only · DTK and recognition are never executed</text>
+</svg>

@@ -48,6 +48,7 @@ Install into an ignored repository-local directory:
 ```bash
 python3.12 -m pip install \
   --disable-pip-version-check \
+  --no-deps \
   --require-hashes \
   --only-binary=:all: \
   --target .t/media-evidence-runtime \
@@ -119,6 +120,14 @@ stderr bytes, no termination signal, and both process reaping and process-group
 closure. It contains no PID, local path, hostname, timestamp, environment
 value, or captured stderr text.
 
+The separate evidence renderer contains both public CLI runs under a temporary
+Linux child subreaper. It refuses unsafe `SIGCHLD`, native-thread, or
+pre-existing-child contexts; retains the child wait status before every numeric
+process-group signal; reaps adopted descendants; and converts parent
+`SIGHUP`/`SIGINT`/`SIGQUIT`/`SIGTERM` into ordered cleanup. These controls
+require those termination signals to be initially unblocked, protect evidence
+generation, and do not expand the production probe claims.
+
 ## Evidence and non-claims
 
 The generated source video contains only deterministic geometric shapes. Its
@@ -132,7 +141,20 @@ bytes using only the Python standard library. The media probe establishes:
 - complete fixed-size RGB frame delivery;
 - per-frame byte identities and ordering;
 - bounded buffering, stderr, timeouts, and process cleanup; and
-- a receipt-bound decoded-frame source for the planned lossless visuals.
+- receipt-bound lossless PNG and GIF artifacts decoded back to the exact source
+  pixels by the evidence verifier.
+
+The committed
+[`decoded-contact-sheet.png`](visuals/generated/decoded-contact-sheet.png)
+contains frames `0`, `8`, and `17` at nearest-neighbor `2×` scale. The
+[`decoded-rgb.gif`](visuals/generated/decoded-rgb.gif) contains all 18 complete
+frames, uses the exact 34 decoded colors as its active palette without
+quantization, and runs for three seconds. Neither raster embeds labels,
+ancillary textual or identifying metadata, or host identity; every decoded
+image pixel has a color present in the actual pinned-FFmpeg output. The GIF
+contains only the structural active palette and required zero padding,
+deterministic loop, per-frame timing/disposal controls, and image data required
+by its closed profile.
 
 It cannot establish:
 
