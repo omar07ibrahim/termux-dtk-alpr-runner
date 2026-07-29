@@ -91,6 +91,23 @@ memory-safety defect in the SDK can compromise the runner.
   cleanup under an explicit no-detach command contract. It requires
   byte-identical results and exact canonical-summary stdout before deriving any
   visual.
+- The synthetic-media probe accepts only the exact numeric recipe and a
+  size/hash-pinned Linux x86_64 FFmpeg executable. It copies the verified
+  executable into a write-sealed `memfd`, passes each independently rendered
+  Y4M source through a separate write-sealed inherited descriptor, and uses
+  the production frame supervisor for exact RGB24 delivery. Pathname swaps
+  cannot change the bytes executed or consumed after verification.
+- Descriptor-bound command arguments snapshot borrowed file identity, status
+  flags, and current offset without creating constructor-lifetime duplicates.
+  Lazy start revalidates those observable signatures, reserves distinct private
+  FD slots, and atomically replaces each reservation with its inherited copy;
+  missing or observably changed descriptors therefore fail before spawn. This
+  does not portably prove an exact open-file-description, so callers must retain
+  the original FD unchanged until start.
+- Media-probe workspaces live only below a dedicated mode-`0700` directory;
+  their Y4M materializations are mode `0600`. Main-thread `SIGINT`/`SIGTERM`
+  use a reentrant flag, bounded process-group cleanup, handler restoration,
+  and workspace removal.
 - Generated evidence has an exact allowlist. Symlinks, special files, and
   unexpected entries are rejected; inputs are hashed before and after the
   runs; the private staging root stays pinned by file descriptor; published
@@ -116,8 +133,12 @@ memory-safety defect in the SDK can compromise the runner.
   handlers. It cannot make instruction-level atomicity guarantees against
   `SIGKILL`, `os._exit`, interpreter/native crashes, or artificial
   `PyThreadState`/trace-hook exception injection between arbitrary CPython
-  bytecodes. Standalone supervisor callers remain responsible for calling
-  `close()` if their own control flow abandons a live source.
+  bytecodes. A monkeypatched spawn wrapper that creates a child and then raises
+  before returning its owner is likewise outside the contract; guessing a PID
+  from a concurrent process table could terminate an unrelated child. Real
+  Python-handled signals are masked across descriptor binding, spawn, and
+  ownership publication. Standalone supervisor callers remain responsible for
+  calling `close()` if their own control flow abandons a live source.
 - Plate aggregation keeps plaintext plate keys in memory and on disk.
 - The SDK system identifier may be printed by existing launch paths.
 - The proprietary SDK's callback ABI, timestamp propagation, frame-ownership
@@ -150,6 +171,11 @@ runtime-derived event-flow and geometry artifacts. Terminal evidence is marked
 as a path-normalized rendering of exact stdout rather than a literal screen
 capture.
 
+The separate synthetic-media probe now establishes exact real FFmpeg RGB24
+delivery and clean supervisor lifecycle behavior without a camera or SDK. It
+does not establish recognition, detection, accuracy, performance, or hardware
+compatibility.
+
 ## Planned mitigations
 
 - Redacted source descriptors at every log and status boundary.
@@ -163,6 +189,5 @@ capture.
 - Licensed-device conformance tests for the documented DTK ownership and
   callback-order assumptions; offline tests use opaque fake handles and prove
   only the repository-owned wrapper model.
-- A future redistributable synthetic-media pipeline for the image/video
-  boundary. The current event-only evidence pipeline never requires
-  proprietary data but intentionally stops before decoding or recognition.
+- Lossless, receipt-bound figures for the synthetic-media delivery boundary;
+  recognition remains outside that pipeline by design.

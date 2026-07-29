@@ -42,9 +42,9 @@
   ],
   "inputs": [
     {
-      "bytes": 948,
+      "bytes": 1288,
       "path": ".github/workflows/ci.yml",
-      "sha256": "3a276b37c7eb3b9c44d45046abfc585b5a5edd7ef76ea17ce2378068f4d318a1"
+      "sha256": "0333f73d92b39cb9a67bc7c7960477642d67cd23f6fe98fe16737b9680b8bb8b"
     },
     {
       "bytes": 169,
@@ -52,9 +52,9 @@
       "sha256": "9a470ce23dfd1831a88f952e81d0061ef6dfac47439e919c2b4bcc3e1768f696"
     },
     {
-      "bytes": 12209,
+      "bytes": 12926,
       "path": "README.md",
-      "sha256": "c9f8ac04e946433921dfb2d057478930ba90b578eff2b1b7e52eaa44a557f734"
+      "sha256": "ef8133697054934af1174ddb7390249f5df6a9dd85f2efbdbae89a23e87918b8"
     },
     {
       "bytes": 60,
@@ -82,14 +82,19 @@
       "sha256": "bd49e16458d542a353ae47cdce2bb8550c32b81e61ed1465e4c432bb16979317"
     },
     {
-      "bytes": 42209,
+      "bytes": 59615,
       "path": "alpr_runner/ffmpeg_io.py",
-      "sha256": "a4c3c224599e058e7514356c5c19a524552a2f44e4e573b5d575d4a201aed64b"
+      "sha256": "45ed90ea9d15b0cede6870d1d0fbbfd56c0959b367f70503f7e08222282c53c6"
     },
     {
       "bytes": 41976,
       "path": "alpr_runner/ffmpeg_video.py",
       "sha256": "e440ec90f9d22e8ea5721f32eae2304b2368e44dbe38c761bce9177fd3d70fcf"
+    },
+    {
+      "bytes": 37382,
+      "path": "alpr_runner/media_probe.py",
+      "sha256": "2deb9b099b2381f3402e65e478869dcf23de564245c035058c4f47019fb8715d"
     },
     {
       "bytes": 16413,
@@ -122,19 +127,19 @@
       "sha256": "5a786b80a6275e46665138faccf52b0044b9239cc0a49a03a5dd552577a6e6cb"
     },
     {
-      "bytes": 5374,
+      "bytes": 6047,
       "path": "docs/charter.md",
-      "sha256": "cedf5f1b8ed7d2cc0ae4bde2c4af5ac2f0e323d72517d48ec214614f92d17390"
+      "sha256": "eceb340104acd21599b604fc832667891b7374c9cb46a27d2213d1e1d113cc04"
     },
     {
-      "bytes": 3307,
+      "bytes": 6672,
       "path": "docs/media-evidence.md",
-      "sha256": "66d93c0f547396e8ab675730c47b455e03bca53331e4b3bdd913c8bc417be7ed"
+      "sha256": "9a0d1db862e306dc05e14411a8973568f45773dcaa987862411edd44a1dba84c"
     },
     {
-      "bytes": 9119,
+      "bytes": 10809,
       "path": "docs/threat-model.md",
-      "sha256": "cbe24b2cc503df54a53572039a6902ee2ddfb445d90c09c2b3d897b8076203c6"
+      "sha256": "6460610ccb9bf0be5daf1bc328c33e811740af8d06f70643b27bcae3da7d7239"
     },
     {
       "bytes": 1422,
@@ -162,9 +167,9 @@
       "sha256": "20d2a89e1c2c091a55a6b29895a41e9d2747e594683775dfcd04d7eee5d06284"
     },
     {
-      "bytes": 67310,
+      "bytes": 101164,
       "path": "tests/test_ffmpeg_io.py",
-      "sha256": "17af8e69a3546991fd56da0d3a7cafee5e2fc3a6afdc697fd1ba8c5d268d4f12"
+      "sha256": "a2ec57e5157633391b2343613fb7ee8f70cb8ee68efbef1c666158f403248a66"
     },
     {
       "bytes": 37699,
@@ -177,14 +182,19 @@
       "sha256": "9ffcb3964f75dfd18ba04036446f792c8fa7185d09e0c59c117cf353e3e4e2b3"
     },
     {
+      "bytes": 15377,
+      "path": "tests/test_media_probe.py",
+      "sha256": "12e188b7ef3dea96d6baa583cb3c760e49e57626808e13695ee693f78d5d414a"
+    },
+    {
       "bytes": 2397,
       "path": "tests/test_publication_boundary.py",
       "sha256": "e155f551a501eac0145cff56bcaee4bb535b6faa98548198f811f5f3c387a820"
     },
     {
-      "bytes": 29568,
+      "bytes": 29891,
       "path": "tests/test_render_readme_visuals.py",
-      "sha256": "f77e53a185e489bbb9d4b827ebe4f7c0835c6276273b41da2350f580b59c922f"
+      "sha256": "8f82ac8f15aba20fbec39b099d8dd310ca8a4ef97162c82dd543245fc5012de8"
     },
     {
       "bytes": 12610,
@@ -207,9 +217,14 @@
       "sha256": "3e60dcfa50bf7405d72e681fc461ae4616222462f70c115c55442dce7f90ea0f"
     },
     {
-      "bytes": 68011,
+      "bytes": 1822,
+      "path": "tools/probe_media.py",
+      "sha256": "964f6644efe5e348c92cc53551b1f3fd8ec64f1990d9b2befdbb9d7a9b118b64"
+    },
+    {
+      "bytes": 68046,
       "path": "tools/render_readme_visuals.py",
-      "sha256": "036c0f8437ef5c5dd2cf847123df7ac0ddef9dff54f01c53976845f4b9a64a07"
+      "sha256": "5896fd4c526d3062a71fcacf69c1b9b4686bb9d67f69e2bc4676d6c22784f87b"
     }
   ],
   "manifest": {

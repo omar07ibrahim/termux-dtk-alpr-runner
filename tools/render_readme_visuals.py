@@ -196,10 +196,10 @@ def _input_paths(root: Path = REPOSITORY) -> tuple[Path, ...]:
         FIXTURE_RELATIVE,
         MEDIA_RECIPE_RELATIVE,
         Path("requirements-media-evidence.lock"),
-        Path("tools/render_readme_visuals.py"),
     }
     fixed.update(path.relative_to(root) for path in (root / "alpr_runner").glob("*.py"))
     fixed.update(path.relative_to(root) for path in (root / "tests").glob("test_*.py"))
+    fixed.update(path.relative_to(root) for path in (root / "tools").glob("*.py"))
     return tuple(sorted(fixed, key=lambda item: item.as_posix()))
 
 

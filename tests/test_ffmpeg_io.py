@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import errno
+import gc
 import inspect
 import json
 import os
@@ -12,11 +14,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from alpr_runner import ffmpeg_io
 from alpr_runner.ffmpeg_io import (
     MAX_FRAME_BYTES,
     FfmpegFrameSource,
     FfmpegSupervisorError,
     FrameSpec,
+    InheritedFdArgument,
 )
 
 
@@ -1411,11 +1415,44 @@ os._exit(0)
         self.assertEqual(kwargs["bufsize"], 0)
         self.assertIs(kwargs["start_new_session"], True)
         self.assertIs(kwargs["close_fds"], True)
+        self.assertEqual(kwargs["pass_fds"], ())
         self.assertEqual(raised.exception.code, "spawn_failed")
         self.assertNotIn(private, str(raised.exception))
         self.assertIsNone(raised.exception.__cause__)
         self.assertIsNone(raised.exception.__context__)
         self.assertEqual(source.state, "failed")
+
+    def test_descriptor_bound_argument_is_inherited_without_entering_receipt(
+        self,
+    ) -> None:
+        read_descriptor, write_descriptor = os.pipe()
+        try:
+            os.write(write_descriptor, b"abc")
+            os.close(write_descriptor)
+            write_descriptor = -1
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys; os.write(1, os.read(int(sys.argv[1]), 3))"
+                )
+                + [InheritedFdArgument(read_descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+
+            self.assertEqual(source.read_frame(), b"abc")
+            self.assertIsNone(source.read_frame())
+            receipt = source.receipt()
+            self.assertEqual(receipt["source"], {"kind": "pipe"})
+            self.assertNotIn("pass_fds", receipt)
+        finally:
+            os.close(read_descriptor)
+            if write_descriptor >= 0:
+                os.close(write_descriptor)
 
     def test_successful_spawn_redacts_retained_popen_arguments(self) -> None:
         private = "rtsp://viewer@192.0.2.47/private"
@@ -1915,6 +1952,910 @@ os._exit(0)
                 source_kind="file",
                 source=True,  # type: ignore[arg-type]
             )
+        for descriptor, template in (
+            (True, "{fd}"),
+            (2, "{fd}"),
+            (3, "missing-placeholder"),
+            (3, "{fd}{fd}"),
+        ):
+            with self.subTest(descriptor=descriptor, template=template):
+                with self.assertRaises((TypeError, ValueError)):
+                    InheritedFdArgument(  # type: ignore[arg-type]
+                        descriptor,
+                        template,
+                    )
+
+    def test_bound_descriptor_cannot_be_replaced_before_lazy_spawn(
+        self,
+    ) -> None:
+        original = os.memfd_create("bound-old", flags=os.MFD_CLOEXEC)
+        replacement: int | None = None
+        try:
+            original_number = original
+            os.write(original, b"OLD")
+            os.lseek(original, 0, os.SEEK_SET)
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys;"
+                    "fd=int(sys.argv[1]);"
+                    "os.lseek(fd,0,0);"
+                    "os.write(1,os.read(fd,3))"
+                )
+                + [InheritedFdArgument(original)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+            self.assertIsNone(source._pending_fd_binding)
+
+            os.close(original)
+            original = -1
+            replacement = os.memfd_create(
+                "bound-new",
+                flags=os.MFD_CLOEXEC,
+            )
+            self.assertEqual(replacement, original_number)
+            os.write(replacement, b"NEW")
+
+            with self.assertRaises(FfmpegSupervisorError) as raised:
+                source.read_frame()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertIsNone(source._pending_fd_binding)
+            os.lseek(replacement, 0, os.SEEK_SET)
+            self.assertEqual(os.read(replacement, 3), b"NEW")
+        finally:
+            if original >= 0:
+                os.close(original)
+            if replacement is not None:
+                os.close(replacement)
+
+    def test_abandoned_new_source_does_not_own_a_duplicate_descriptor(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("borrowed", flags=os.MFD_CLOEXEC)
+        try:
+            before = set(os.listdir("/proc/self/fd"))
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+            del source
+            gc.collect()
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_missing_later_descriptor_cannot_alias_an_earlier_duplicate(
+        self,
+    ) -> None:
+        first = os.memfd_create("first-borrowed", flags=os.MFD_CLOEXEC)
+        second = os.memfd_create("second-borrowed", flags=os.MFD_CLOEXEC)
+        try:
+            first_argument = InheritedFdArgument(first)
+            second_argument = InheritedFdArgument(second)
+            os.close(second)
+            second = -1
+            before = set(os.listdir("/proc/self/fd"))
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)")
+                + [first_argument, second_argument],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+
+            with self.assertRaises(FfmpegSupervisorError) as raised:
+                source.start()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            os.fstat(first)
+        finally:
+            os.close(first)
+            if second >= 0:
+                os.close(second)
+
+    def test_later_descriptor_disappearance_cannot_alias_first_binding(
+        self,
+    ) -> None:
+        first = os.memfd_create("first-race-source", flags=os.MFD_CLOEXEC)
+        second = os.memfd_create("second-race-source", flags=os.MFD_CLOEXEC)
+        real_socket = ffmpeg_io.socket.socket
+        reservation_targets: list[int] = []
+        second_closed = False
+        try:
+            first_argument = InheritedFdArgument(first)
+            second_argument = InheritedFdArgument(second)
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)")
+                + [first_argument, second_argument],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            before_count = len(os.listdir("/proc/self/fd"))
+
+            def close_second_before_first_reservation(
+                *args: object,
+                **kwargs: object,
+            ) -> ffmpeg_io.socket.socket:
+                nonlocal second, second_closed
+                if not second_closed:
+                    os.close(second)
+                    second = -1
+                    second_closed = True
+                reservation = real_socket(*args, **kwargs)
+                reservation_targets.append(reservation.fileno())
+                return reservation
+
+            with (
+                patch.object(
+                    ffmpeg_io.socket,
+                    "socket",
+                    side_effect=close_second_before_first_reservation,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertTrue(second_closed)
+            self.assertGreaterEqual(len(reservation_targets), 2)
+            self.assertEqual(
+                reservation_targets[0],
+                second_argument.descriptor,
+            )
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(
+                len(os.listdir("/proc/self/fd")),
+                before_count - 1,
+            )
+            for target in reservation_targets:
+                with self.assertRaises(OSError) as closed:
+                    os.fstat(target)
+                self.assertEqual(closed.exception.errno, errno.EBADF)
+            os.fstat(first)
+        finally:
+            os.close(first)
+            if second >= 0:
+                os.close(second)
+
+    def test_binding_interrupt_after_acquire_closes_owned_fd_and_retries(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("retry-borrowed", flags=os.MFD_CLOEXEC)
+        captured: list[int] = []
+        interruption = KeyboardInterrupt("synthetic post-acquire interrupt")
+        real_acquire = ffmpeg_io._PendingFdBinding.acquire
+        try:
+            os.write(descriptor, b"OLD")
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys;"
+                    "fd=int(sys.argv[1]);"
+                    "os.lseek(fd,0,0);"
+                    "os.write(1,os.read(fd,3))"
+                )
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            def acquire_then_interrupt(
+                binding: ffmpeg_io._PendingFdBinding,
+                command: tuple[str | InheritedFdArgument, ...],
+            ) -> None:
+                real_acquire(binding, command)
+                captured.extend(binding.pass_fds)
+                raise interruption
+
+            with (
+                patch.object(
+                    ffmpeg_io._PendingFdBinding,
+                    "acquire",
+                    new=acquire_then_interrupt,
+                ),
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                source.start()
+
+            self.assertIs(raised.exception, interruption)
+            self.assertEqual(source.state, "new")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            for owned in captured:
+                with self.assertRaises(OSError) as closed:
+                    os.fstat(owned)
+                self.assertEqual(closed.exception.errno, errno.EBADF)
+
+            self.assertEqual(source.read_frame(), b"OLD")
+            self.assertIsNone(source.read_frame())
+            self.assertIsNone(source._pending_fd_binding)
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_raising_dup2_wrapper_leaves_reserved_target_owned(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("hidden-duplicate", flags=os.MFD_CLOEXEC)
+        created: list[int] = []
+        interruption = KeyboardInterrupt("synthetic post-syscall interrupt")
+        real_dup2 = os.dup2
+        try:
+            os.write(descriptor, b"OLD")
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys;"
+                    "fd=int(sys.argv[1]);"
+                    "os.lseek(fd,0,0);"
+                    "os.write(1,os.read(fd,3))"
+                )
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            def duplicate_then_interrupt(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                result = real_dup2(
+                    source_fd,
+                    target_fd,
+                    inheritable=inheritable,
+                )
+                created.append(target_fd)
+                raise interruption
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=duplicate_then_interrupt,
+                ),
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                source.start()
+
+            self.assertIs(raised.exception, interruption)
+            self.assertEqual(len(created), 1)
+            self.assertEqual(source.state, "new")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            with self.assertRaises(OSError) as closed:
+                os.fstat(created[0])
+            self.assertEqual(closed.exception.errno, errno.EBADF)
+
+            self.assertEqual(source.read_frame(), b"OLD")
+            self.assertIsNone(source.read_frame())
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_failed_dup2_never_claims_concurrent_foreign_duplicate(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("foreign-source", flags=os.MFD_CLOEXEC)
+        foreign: int | None = None
+        try:
+            os.write(descriptor, b"OLD")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            def create_foreign_then_fail(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                nonlocal foreign
+                del target_fd, inheritable
+                foreign = os.dup(source_fd)
+                raise OSError(errno.EMFILE, "synthetic primary dup2 failure")
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=create_foreign_then_fail,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertIsNotNone(foreign)
+            assert foreign is not None
+            os.lseek(foreign, 0, os.SEEK_SET)
+            self.assertEqual(os.read(foreign, 3), b"OLD")
+            os.close(foreign)
+            foreign = None
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+        finally:
+            os.close(descriptor)
+            if foreign is not None:
+                os.close(foreign)
+
+    def test_same_inode_reopen_with_changed_offset_fails_closed(
+        self,
+    ) -> None:
+        original = os.memfd_create("same-inode", flags=os.MFD_CLOEXEC)
+        alias = os.dup(original)
+        reopened: int | None = None
+        try:
+            os.write(original, b"OLDNEW")
+            os.lseek(original, 0, os.SEEK_SET)
+            argument = InheritedFdArgument(original)
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys;"
+                    "fd=int(sys.argv[1]);"
+                    "os.write(1,os.read(fd,3))"
+                )
+                + [argument],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            original_number = original
+            os.close(original)
+            original = -1
+            reopened = os.open(
+                f"/proc/self/fd/{alias}",
+                os.O_RDWR | os.O_CLOEXEC,
+            )
+            self.assertEqual(reopened, original_number)
+            os.lseek(reopened, 3, os.SEEK_SET)
+            self.assertEqual(
+                ffmpeg_io._descriptor_identity(os.fstat(reopened)),
+                argument._identity,
+            )
+
+            with self.assertRaises(FfmpegSupervisorError) as raised:
+                source.start()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(os.lseek(reopened, 0, os.SEEK_CUR), 3)
+            self.assertEqual(os.read(reopened, 3), b"NEW")
+        finally:
+            if original >= 0:
+                os.close(original)
+            os.close(alias)
+            if reopened is not None:
+                os.close(reopened)
+
+    def test_partial_binding_failure_retries_one_shot_close_failure(
+        self,
+    ) -> None:
+        first = os.memfd_create("partial-first", flags=os.MFD_CLOEXEC)
+        second = os.memfd_create("partial-second", flags=os.MFD_CLOEXEC)
+        real_dup2 = os.dup2
+        real_close = os.close
+        real_close_reservation = (
+            ffmpeg_io._close_inherited_reservation
+        )
+        duplicates: list[int] = []
+        duplicate_calls = 0
+        close_failed = False
+        try:
+            arguments = [
+                InheritedFdArgument(first),
+                InheritedFdArgument(second),
+            ]
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)") + arguments,
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            def fail_second_duplicate(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                nonlocal duplicate_calls
+                duplicate_calls += 1
+                if duplicate_calls == 2:
+                    raise OSError(errno.EMFILE, "synthetic duplicate failure")
+                result = real_dup2(
+                    source_fd,
+                    target_fd,
+                    inheritable=inheritable,
+                )
+                duplicates.append(target_fd)
+                return result
+
+            def fail_first_owned_close(
+                reservation: ffmpeg_io.socket.socket,
+            ) -> None:
+                nonlocal close_failed
+                descriptor = reservation.fileno()
+                if descriptor in duplicates and not close_failed:
+                    close_failed = True
+                    raise OSError(errno.EINTR, "synthetic close failure")
+                real_close_reservation(reservation)
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=fail_second_duplicate,
+                ),
+                patch.object(
+                    ffmpeg_io,
+                    "_close_inherited_reservation",
+                    side_effect=fail_first_owned_close,
+                ),
+                self.assertRaises(BaseExceptionGroup),
+            ):
+                source.start()
+
+            self.assertEqual(duplicate_calls, 2)
+            self.assertTrue(close_failed)
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            for duplicate in duplicates:
+                with self.assertRaises(OSError) as closed:
+                    os.fstat(duplicate)
+                self.assertEqual(closed.exception.errno, errno.EBADF)
+            os.fstat(first)
+            os.fstat(second)
+        finally:
+            real_close(first)
+            real_close(second)
+
+    def test_render_failure_after_duplication_leaves_no_owned_descriptor(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("render-borrowed", flags=os.MFD_CLOEXEC)
+        try:
+            source = FfmpegFrameSource(
+                _python_child("raise SystemExit(0)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            with (
+                patch.object(
+                    InheritedFdArgument,
+                    "render",
+                    side_effect=MemoryError("synthetic render failure"),
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertEqual(source.state, "failed")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_popen_interrupt_keeps_template_for_safe_retry(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("popen-retry", flags=os.MFD_CLOEXEC)
+        interruption = KeyboardInterrupt("synthetic pre-spawn interrupt")
+        try:
+            os.write(descriptor, b"OLD")
+            source = FfmpegFrameSource(
+                _python_child(
+                    "import os,sys;"
+                    "fd=int(sys.argv[1]);"
+                    "os.lseek(fd,0,0);"
+                    "os.write(1,os.read(fd,3))"
+                )
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            with (
+                patch.object(
+                    ffmpeg_io.subprocess,
+                    "Popen",
+                    side_effect=interruption,
+                ),
+                self.assertRaises(KeyboardInterrupt) as raised,
+            ):
+                source.start()
+
+            self.assertIs(raised.exception, interruption)
+            self.assertEqual(source.state, "new")
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+            self.assertEqual(source.read_frame(), b"OLD")
+            self.assertIsNone(source.read_frame())
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_duplicate_layout_uses_unique_reserved_slots(
+        self,
+    ) -> None:
+        first = os.memfd_create("layout-first", flags=os.MFD_CLOEXEC)
+        second = os.memfd_create("layout-second", flags=os.MFD_CLOEXEC)
+        try:
+            source = FfmpegFrameSource(
+                [
+                    "ffmpeg",
+                    InheritedFdArgument(first, "first:{fd}"),
+                    InheritedFdArgument(first, "again:{fd}"),
+                    InheritedFdArgument(second, "second:{fd}"),
+                ],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            with (
+                patch.object(
+                    ffmpeg_io.subprocess,
+                    "Popen",
+                    side_effect=OSError("synthetic spawn failure"),
+                ) as popen,
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            command = popen.call_args.args[0]
+            inherited = popen.call_args.kwargs["pass_fds"]
+            first_rendered = int(command[1].split(":", 1)[1])
+            repeated = int(command[2].split(":", 1)[1])
+            second_rendered = int(command[3].split(":", 1)[1])
+            self.assertEqual(raised.exception.code, "spawn_failed")
+            self.assertEqual(len(inherited), 2)
+            self.assertEqual(first_rendered, repeated)
+            self.assertNotEqual(first_rendered, second_rendered)
+            self.assertEqual(
+                set(inherited),
+                {first_rendered, second_rendered},
+            )
+            self.assertTrue(
+                all(item not in {first, second} for item in inherited)
+            )
+            self.assertTrue(all(item >= 3 for item in inherited))
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            os.fstat(first)
+            os.fstat(second)
+        finally:
+            os.close(first)
+            os.close(second)
+
+    def test_closed_stdout_cannot_be_selected_as_inherited_target(
+        self,
+    ) -> None:
+        script = """
+import fcntl
+import os
+import sys
+from alpr_runner.ffmpeg_io import (
+    FfmpegFrameSource,
+    FrameSpec,
+    InheritedFdArgument,
+)
+os.close(1)
+low = os.memfd_create("closed-stdout", flags=os.MFD_CLOEXEC)
+high = fcntl.fcntl(low, fcntl.F_DUPFD_CLOEXEC, 3)
+os.close(low)
+os.write(high, b"abc")
+os.lseek(high, 0, os.SEEK_SET)
+source = FfmpegFrameSource(
+    [
+        sys.executable,
+        "-S",
+        "-c",
+        "import os,sys;os.write(1,os.read(int(sys.argv[1]),3))",
+        InheritedFdArgument(high),
+    ],
+    FrameSpec(1, 1, 1),
+    source_kind="pipe",
+    startup_timeout=1.0,
+    idle_timeout=1.0,
+    stderr_limit=1024,
+    terminate_timeout=0.2,
+    kill_timeout=0.2,
+)
+assert source.read_frame() == b"abc"
+assert source.read_frame() is None
+assert source._pending_fd_binding is None
+os.fstat(high)
+os.write(2, b"OK")
+os.close(high)
+"""
+        completed = subprocess.run(
+            [sys.executable, "-S", "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=5,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, b"")
+        self.assertEqual(completed.stderr, b"OK")
+
+    def test_transient_owned_fstat_failure_is_retried_before_release(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("fstat-borrowed", flags=os.MFD_CLOEXEC)
+        real_dup2 = os.dup2
+        real_fstat = os.fstat
+        duplicates: list[int] = []
+        duplicate_fstats = 0
+        try:
+            source = FfmpegFrameSource(
+                _python_child("import time; time.sleep(10)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+            before = set(os.listdir("/proc/self/fd"))
+
+            def track_duplicate(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                result = real_dup2(
+                    source_fd,
+                    target_fd,
+                    inheritable=inheritable,
+                )
+                duplicates.append(target_fd)
+                return result
+
+            def fail_first_cleanup_fstat(
+                target: int,
+            ) -> os.stat_result:
+                nonlocal duplicate_fstats
+                if target in duplicates:
+                    duplicate_fstats += 1
+                    if duplicate_fstats == 2:
+                        raise OSError(errno.EIO, "synthetic fstat failure")
+                return real_fstat(target)
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=track_duplicate,
+                ),
+                patch.object(
+                    ffmpeg_io.os,
+                    "fstat",
+                    side_effect=fail_first_cleanup_fstat,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            self.assertEqual(raised.exception.code, "io_setup_failed")
+            self.assertEqual(duplicate_fstats, 3)
+            self.assertIsNone(source._pending_fd_binding)
+            self.assertIs(source.receipt()["process_reaped"], True)
+            self.assertIs(source.receipt()["process_group_closed"], True)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+            for duplicate in duplicates:
+                with self.assertRaises(OSError) as closed:
+                    os.fstat(duplicate)
+                self.assertEqual(closed.exception.errno, errno.EBADF)
+            os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_failed_start_close_retries_persistent_descriptor_cleanup(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create(
+            "persistent-close-source",
+            flags=os.MFD_CLOEXEC,
+        )
+        real_dup2 = os.dup2
+        targets: list[int] = []
+        source: FfmpegFrameSource | None = None
+        try:
+            source = FfmpegFrameSource(
+                _python_child("import time; time.sleep(10)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+
+            def track_duplicate(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                result = real_dup2(
+                    source_fd,
+                    target_fd,
+                    inheritable=inheritable,
+                )
+                targets.append(target_fd)
+                return result
+
+            def fail_owned_close(
+                reservation: ffmpeg_io.socket.socket,
+            ) -> None:
+                del reservation
+                raise OSError(errno.EIO, "synthetic persistent close failure")
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=track_duplicate,
+                ),
+                patch.object(
+                    ffmpeg_io,
+                    "_close_inherited_reservation",
+                    side_effect=fail_owned_close,
+                ),
+                self.assertRaises(BaseExceptionGroup),
+            ):
+                source.start()
+
+            self.assertEqual(source.state, "failed")
+            self.assertIsNotNone(source._pending_fd_binding)
+            self.assertEqual(len(targets), 1)
+            os.fstat(targets[0])
+            self.assertIs(source.receipt()["process_reaped"], True)
+            self.assertIs(source.receipt()["process_group_closed"], True)
+
+            source.close()
+
+            self.assertIsNone(source._pending_fd_binding)
+            with self.assertRaises(OSError) as closed:
+                os.fstat(targets[0])
+            self.assertEqual(closed.exception.errno, errno.EBADF)
+            os.fstat(descriptor)
+        finally:
+            if source is not None:
+                source.close()
+            os.close(descriptor)
+
+    def test_close_hook_reuse_never_closes_replacement_descriptor(
+        self,
+    ) -> None:
+        descriptor = os.memfd_create("reuse-borrowed", flags=os.MFD_CLOEXEC)
+        real_dup2 = os.dup2
+        real_close = os.close
+        real_close_reservation = (
+            ffmpeg_io._close_inherited_reservation
+        )
+        duplicates: list[int] = []
+        replacement: int | None = None
+        try:
+            source = FfmpegFrameSource(
+                _python_child("import time; time.sleep(10)")
+                + [InheritedFdArgument(descriptor)],
+                FrameSpec(1, 1, 1),
+                source_kind="pipe",
+                startup_timeout=1.0,
+                idle_timeout=1.0,
+                stderr_limit=1024,
+                terminate_timeout=0.2,
+                kill_timeout=0.2,
+            )
+
+            def track_duplicate(
+                source_fd: int,
+                target_fd: int,
+                *,
+                inheritable: bool = True,
+            ) -> int:
+                result = real_dup2(
+                    source_fd,
+                    target_fd,
+                    inheritable=inheritable,
+                )
+                duplicates.append(target_fd)
+                return result
+
+            def close_reopen_then_fail(
+                reservation: ffmpeg_io.socket.socket,
+            ) -> None:
+                nonlocal replacement
+                target = reservation.fileno()
+                if target in duplicates and replacement is None:
+                    real_close_reservation(reservation)
+                    replacement = os.memfd_create(
+                        "replacement",
+                        flags=os.MFD_CLOEXEC,
+                    )
+                    self.assertEqual(replacement, target)
+                    os.write(replacement, b"NEW")
+                    raise OSError(errno.EIO, "synthetic post-close failure")
+                real_close_reservation(reservation)
+
+            with (
+                patch.object(
+                    ffmpeg_io.os,
+                    "dup2",
+                    side_effect=track_duplicate,
+                ),
+                patch.object(
+                    ffmpeg_io,
+                    "_close_inherited_reservation",
+                    side_effect=close_reopen_then_fail,
+                ),
+                self.assertRaises(FfmpegSupervisorError) as raised,
+            ):
+                source.start()
+
+            self.assertEqual(raised.exception.code, "io_setup_failed")
+            self.assertIsNotNone(replacement)
+            assert replacement is not None
+            self.assertIsNone(source._pending_fd_binding)
+            os.lseek(replacement, 0, os.SEEK_SET)
+            self.assertEqual(os.read(replacement, 3), b"NEW")
+            os.fstat(descriptor)
+        finally:
+            real_close(descriptor)
+            if replacement is not None:
+                real_close(replacement)
 
 
 if __name__ == "__main__":

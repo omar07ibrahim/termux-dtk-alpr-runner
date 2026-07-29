@@ -31,6 +31,10 @@ model.
 - A reproducible evidence renderer with two byte-identical CLI runs, bounded
   subprocess streams, exact generated-tree checks, source hashes, privacy
   scans, accessible SVG validation, and manifest-last publication.
+- A Linux x86_64 synthetic-media probe that binds a hash-pinned FFmpeg
+  executable and both Y4M renders from the numeric-only recipe to write-sealed
+  descriptors, delivers 18 exact RGB24 frames twice through the production
+  supervisor, and emits a path-free lifecycle receipt.
 - Termux/proot setup and launch scripts.
 
 ## Required external components
@@ -57,6 +61,9 @@ These components are not vendored or fetched automatically by the repository.
   trace through orchestration, aggregation, and normalized zoom geometry. It
   does not prove exhaustive validation, recognition, media decoding, camera
   integration, accuracy, latency, or throughput.
+- The synthetic-media probe proves only pinned FFmpeg frame delivery and
+  lifecycle cleanup for one 160×96 geometric source. It does not execute DTK,
+  recognize or detect anything, use a camera, or measure performance.
 
 ## Portfolio-grade release criteria
 
@@ -98,4 +105,6 @@ canonical-summary stdout with a path-normalized command and exit marker added
 by the renderer; its event-flow and zoom figures are derived from the actual
 JSON artifact; its architecture and setup figures are explicitly explanatory.
 There is no GIF or video because the fixture has no pixels and animation would
-not establish an additional verified property.
+not establish an additional verified property. A separate exact RGB media
+probe now supplies real decoded pixels; any later PNG/GIF must remain
+byte-bound to its receipt and preserve the same non-recognition boundary.

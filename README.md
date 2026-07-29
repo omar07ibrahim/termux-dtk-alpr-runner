@@ -49,14 +49,24 @@ package. Five validated `SYNTH-*` events exercise the production
 plate-to-target geometry, per-camera zoom controller, and cross-camera
 aggregation registry. They do **not** exercise or imitate ALPR recognition.
 
-The separate [verified media boundary](docs/media-evidence.md) defines a
-hash-pinned, repository-local FFmpeg profile for upcoming frame-delivery
-evidence. Its canonical
-[numeric-only geometric recipe](examples/synthetic-media-v1.json) is already
-source-verifiable without FFmpeg. The scope and non-claims are explicit: the
-future process probe will not assert DTK execution, recognition quality,
-camera compatibility, or performance. Until that evidence is committed and
-passes its own verifier, the figures below remain event-level evidence only.
+The separate [verified media boundary](docs/media-evidence.md) now implements a
+hash-pinned, repository-local FFmpeg frame-delivery probe. Its canonical
+[numeric-only geometric recipe](examples/synthetic-media-v1.json) is
+source-verifiable without FFmpeg, while
+`python3.12 -S tools/probe_media.py --json` performs two real supervised FFmpeg
+runs and requires byte-identical RGB frames and lifecycle receipts. The scope
+and non-claims are explicit: the probe does not assert DTK execution,
+recognition quality, camera compatibility, or performance. The figures below
+remain event-level evidence; the media receipt is documented separately until
+its lossless frame-derived figures are published by the same verifier.
+
+The descriptor handoff is also fail-closed: command arguments snapshot a
+borrowed FD's file identity, status flags, and current offset without opening a
+hidden long-lived duplicate. At lazy start the supervisor revalidates every FD,
+atomically duplicates each into a pre-owned private descriptor slot, and closes
+its parent-side copies immediately after spawn. Missing descriptors and
+replacements with a different observable signature are rejected before FFmpeg
+can consume them; callers must retain the original FD unchanged until start.
 
 Run the public fixture directly:
 
@@ -107,9 +117,9 @@ labeled as architecture/workflow material, not as runtime proof.
 
 No GIF or video is published for this event-level demo because animation would
 add no verified information beyond the exact-summary-bound transcript, event
-sequence, and geometry figures. A future media fixture should add video only
-when it can demonstrate a new, reproducible property without proprietary or
-personal data.
+sequence, and geometry figures. The separate media probe now provides the
+necessary real, reproducible RGB source for a lossless animation without
+proprietary or personal data.
 
 ## Phone Install
 

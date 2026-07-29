@@ -28,6 +28,16 @@ jobs:
           cache: false
       - name: Compile Python sources
         run: python -m compileall -q alpr_runner tests tools
+      - name: Install hash-locked evidence-only FFmpeg runtime
+        run: >-
+          umask 077 &&
+          python -m pip install
+          --disable-pip-version-check
+          --no-deps
+          --require-hashes
+          --only-binary=:all:
+          --target .t/media-evidence-runtime
+          -r requirements-media-evidence.lock
       - name: Run vendor-independent contracts
         run: python -m unittest discover -s tests -v
       - name: Verify README evidence is byte-current

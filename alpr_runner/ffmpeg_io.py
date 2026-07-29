@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import errno
+import fcntl
 import math
 import os
 import re
 import selectors
 import signal
+import socket
+import stat
 import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterator, NoReturn, Sequence
 
 MAX_FRAME_WIDTH = 4096
@@ -96,6 +100,293 @@ class FrameSpec:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class InheritedFdArgument:
+    """One borrowed descriptor-bound command argument for a lazy spawn.
+
+    The descriptor must remain open with unchanged status flags and file offset
+    until the source starts. Its file identity and observable state are captured
+    without duplicating it here; ``FfmpegFrameSource.start()`` later duplicates
+    and revalidates them under the spawn guard. This is a fail-closed borrowed-FD
+    contract, not a portable proof of an exact open-file-description.
+    """
+
+    descriptor: int
+    template: str = "{fd}"
+    _identity: tuple[int, int, int] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _signature: tuple[int, int, int, int, int | None] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        if type(self.descriptor) is not int:
+            raise TypeError("inherited descriptor must be an int")
+        if not 3 <= self.descriptor <= 2_147_483_647:
+            raise ValueError("inherited descriptor is out of bounds")
+        if type(self.template) is not str:
+            raise TypeError("inherited descriptor template must be text")
+        remainder = self.template.replace("{fd}", "", 1)
+        if (
+            self.template.count("{fd}") != 1
+            or "{" in remainder
+            or "}" in remainder
+            or "\0" in self.template
+            or not self.template.replace("{fd}", "3")
+        ):
+            raise ValueError("inherited descriptor template is invalid")
+        try:
+            status = os.fstat(self.descriptor)
+            identity = _descriptor_identity(status)
+            signature = _borrowed_descriptor_signature(
+                self.descriptor,
+                status,
+            )
+        except (OSError, ValueError):
+            raise ValueError(
+                "inherited descriptor is unavailable"
+            ) from None
+        object.__setattr__(self, "_identity", identity)
+        object.__setattr__(self, "_signature", signature)
+
+    def render(self, descriptor: int) -> str:
+        return self.template.replace("{fd}", str(descriptor))
+
+
+@dataclass(slots=True)
+class _OwnedInheritedDescriptor:
+    identity: tuple[int, int, int]
+    reservation_identity: tuple[int, int, int] | None = None
+    reservation: socket.socket | None = None
+    dup2_attempted: bool = False
+    bound: bool = False
+
+    @property
+    def descriptor(self) -> int | None:
+        reservation = self.reservation
+        if reservation is None:
+            return None
+        descriptor = reservation.fileno()
+        return descriptor if descriptor >= 0 else None
+
+
+@dataclass(slots=True)
+class _PendingFdBinding:
+    """A parent-owned descriptor transaction anchored before acquisition."""
+
+    command: tuple[str, ...] = ()
+    _owned: list[_OwnedInheritedDescriptor] = field(default_factory=list)
+    _low_fd_guards: list[socket.socket] = field(default_factory=list)
+
+    @property
+    def pass_fds(self) -> tuple[int, ...]:
+        return tuple(
+            owned.descriptor
+            for owned in self._owned
+            if owned.descriptor is not None
+        )
+
+    @property
+    def has_owned_descriptors(self) -> bool:
+        return (
+            any(owned.descriptor is not None for owned in self._owned)
+            or any(guard.fileno() >= 0 for guard in self._low_fd_guards)
+        )
+
+    def acquire(
+        self,
+        template: tuple[str | InheritedFdArgument, ...],
+    ) -> None:
+        if self.command or self._owned:
+            raise RuntimeError("inherited descriptor binding already acquired")
+
+        expected: dict[
+            int,
+            tuple[
+                tuple[int, int, int],
+                tuple[int, int, int, int, int | None],
+            ],
+        ] = {}
+        for argument in template:
+            if type(argument) is not InheritedFdArgument:
+                continue
+            original = argument.descriptor
+            if original in expected:
+                if expected[original] != (
+                    argument._identity,
+                    argument._signature,
+                ):
+                    raise ValueError(
+                        "inherited descriptor identity is ambiguous"
+                    )
+                continue
+            expected[original] = (
+                argument._identity,
+                argument._signature,
+            )
+            try:
+                status = os.fstat(original)
+                current_identity = _descriptor_identity(status)
+                current_signature = _borrowed_descriptor_signature(
+                    original,
+                    status,
+                )
+            except (OSError, ValueError):
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                ) from None
+            if (
+                current_identity != argument._identity
+                or current_signature != argument._signature
+            ):
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                )
+
+        duplicates: dict[int, int] = {}
+        for original, (
+            expected_identity,
+            expected_signature,
+        ) in expected.items():
+            owned = _OwnedInheritedDescriptor(expected_identity)
+            # Anchor an empty slot before acquiring its reservation. A socket
+            # object safely owns a unique fixed target before dup2 atomically
+            # replaces that target with the borrowed file description.
+            self._owned.append(owned)
+            while owned.reservation is None:
+                candidate = socket.socket(
+                    socket.AF_UNIX,
+                    socket.SOCK_STREAM,
+                )
+                if candidate.fileno() >= 3:
+                    owned.reservation = candidate
+                else:
+                    # Keep a closed standard slot occupied until the inherited
+                    # binding is no longer needed. Popen may freely map its own
+                    # stdin/stdout/stderr without colliding with pass_fds.
+                    self._low_fd_guards.append(candidate)
+            duplicate = owned.descriptor
+            if duplicate is None:
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                )
+            try:
+                owned.reservation_identity = _descriptor_identity(
+                    os.fstat(duplicate)
+                )
+            except OSError:
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                ) from None
+            # A reservation can reuse the numeric slot of a later borrowed FD
+            # if that caller-owned FD disappears after the initial validation.
+            # Revalidate immediately before dup2 so the first binding can never
+            # be mistaken for that missing later source.
+            try:
+                status = os.fstat(original)
+                current_identity = _descriptor_identity(status)
+                current_signature = _borrowed_descriptor_signature(
+                    original,
+                    status,
+                )
+            except (OSError, ValueError):
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                ) from None
+            if (
+                current_identity != expected_identity
+                or current_signature != expected_signature
+            ):
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                )
+            try:
+                owned.dup2_attempted = True
+                os.dup2(
+                    original,
+                    duplicate,
+                    inheritable=False,
+                )
+                owned.bound = True
+            except BaseException as error:
+                try:
+                    current_identity = _descriptor_identity(
+                        os.fstat(duplicate)
+                    )
+                except OSError:
+                    current_identity = None
+                if current_identity == expected_identity:
+                    owned.bound = True
+                if isinstance(error, (OSError, ValueError)):
+                    raise ValueError(
+                        "inherited descriptor is unavailable"
+                    ) from None
+                raise
+            duplicates[original] = duplicate
+            try:
+                actual = _descriptor_identity(os.fstat(duplicate))
+            except (OSError, ValueError):
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                ) from None
+            if actual != expected_identity:
+                raise ValueError(
+                    "inherited descriptor is unavailable"
+                )
+
+        self.command = tuple(
+            (
+                argument.render(duplicates[argument.descriptor])
+                if type(argument) is InheritedFdArgument
+                else argument
+            )
+            for argument in template
+        )
+
+    def close(self) -> None:
+        """Close every still-owned duplicate and retain uncertain ownership."""
+
+        # Scrub rendered arguments before a close hook can interrupt cleanup.
+        self.command = ()
+        failures: list[BaseException] = []
+        for owned in self._owned:
+            failure = _close_owned_inherited_descriptor(owned)
+            if failure is not None:
+                failures.append(failure)
+        retained_guards: list[socket.socket] = []
+        for guard in self._low_fd_guards:
+            try:
+                guard.close()
+            except BaseException as error:
+                failures.append(
+                    error
+                    if not isinstance(error, Exception)
+                    else RuntimeError(
+                        "inherited descriptor guard cleanup failed"
+                    )
+                )
+                if guard.fileno() >= 0:
+                    retained_guards.append(guard)
+        self._low_fd_guards = retained_guards
+        self._owned = [
+            owned
+            for owned in self._owned
+            if owned.descriptor is not None
+        ]
+        if len(failures) == 1:
+            raise failures[0]
+        if failures:
+            raise BaseExceptionGroup(
+                "inherited descriptor cleanup failures",
+                failures,
+            )
+
+
 class FfmpegFrameSource:
     """Bounded POSIX supervision for one FFmpeg RGB24 stdout stream.
 
@@ -113,7 +404,7 @@ class FfmpegFrameSource:
 
     def __init__(
         self,
-        command: Sequence[str],
+        command: Sequence[str | InheritedFdArgument],
         spec: FrameSpec,
         *,
         source_kind: str,
@@ -124,7 +415,7 @@ class FfmpegFrameSource:
         terminate_timeout: float = 2.0,
         kill_timeout: float = 2.0,
     ) -> None:
-        self._command = _validate_command(command)
+        command_template = _validate_command(command)
         if type(spec) is not FrameSpec:
             raise TypeError("spec must be a FrameSpec")
         self._spec = spec
@@ -149,6 +440,8 @@ class FfmpegFrameSource:
         if not 1 <= stderr_limit <= MAX_STDERR_BYTES:
             raise ValueError("stderr_limit is out of bounds")
         self._stderr_limit = stderr_limit
+        self._command = command_template
+        self._pending_fd_binding: _PendingFdBinding | None = None
 
         self._state = "new"
         self._failure_code: str | None = None
@@ -185,6 +478,8 @@ class FfmpegFrameSource:
             return self
         if self._state != "new":
             raise RuntimeError("ffmpeg frame source cannot be restarted")
+        if self._pending_fd_binding is not None:
+            self._close_bound_descriptors()
         if (
             os.name != "posix"
             or not hasattr(os, "killpg")
@@ -196,15 +491,20 @@ class FfmpegFrameSource:
         try:
             return self._start_once(start_requested_at)
         except BaseException as error:
-            mask_failure: BaseException | None = None
+            cleanup_failures: list[BaseException] = []
             try:
                 self._restore_start_signal_mask()
             except BaseException as restore_error:
-                mask_failure = restore_error
-            if mask_failure is not None:
+                cleanup_failures.append(restore_error)
+            if self._process is None:
+                try:
+                    self._close_bound_descriptors()
+                except BaseException as close_error:
+                    cleanup_failures.append(close_error)
+            if cleanup_failures:
                 error = BaseExceptionGroup(
-                    "ffmpeg start and signal-mask restoration failures",
-                    [error, mask_failure],
+                    "ffmpeg start and cleanup failures",
+                    [error, *cleanup_failures],
                 )
             # Failures raised from the guarded helper after adoption cannot
             # unwind past an owned live child.
@@ -213,7 +513,7 @@ class FfmpegFrameSource:
                 and self._state in {"new", "running"}
             ):
                 self._abort_started_process(error)
-            if mask_failure is not None:
+            if cleanup_failures:
                 raise error
             raise
 
@@ -224,10 +524,11 @@ class FfmpegFrameSource:
         failure_code: str | None = None
         interruption: BaseException | None = None
         try:
-            # Block SIGINT only across spawn and setup ownership. Restoring the
-            # calling thread's exact mask after the process, pipes, and selector
-            # are all recorded delivers any pending KeyboardInterrupt inside
-            # this protected try block, where bounded cleanup owns everything.
+            # Block every currently handled signal across descriptor binding,
+            # spawn, and ownership setup. Restoring the calling thread's exact
+            # mask after the process, pipes, and selector are all recorded
+            # delivers pending Python handlers inside this protected try block,
+            # where bounded cleanup owns everything.
             previous_mask = signal.pthread_sigmask(
                 signal.SIG_BLOCK,
                 set(),
@@ -236,18 +537,23 @@ class FfmpegFrameSource:
             try:
                 signal.pthread_sigmask(
                     signal.SIG_BLOCK,
-                    {signal.SIGINT},
+                    _handled_start_signals(),
                 )
+                binding = _PendingFdBinding()
+                self._pending_fd_binding = binding
+                binding.acquire(self._command)
                 process = subprocess.Popen(
-                    self._command,
+                    binding.command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     bufsize=0,
                     start_new_session=True,
                     close_fds=True,
+                    pass_fds=binding.pass_fds,
                 )
                 self._adopt_started_process(process, start_requested_at)
+                self._close_bound_descriptors()
                 process.args = ("<redacted-ffmpeg-command>",)
 
                 if process.stdout is None or process.stderr is None:
@@ -303,6 +609,31 @@ class FfmpegFrameSource:
         # retry record for start()'s outer guard.
         self._start_signal_mask = None
 
+    def _close_bound_descriptors(self) -> None:
+        if self._pending_fd_binding is None:
+            return
+        failures: list[BaseException] = []
+        # One immediate retry resolves a one-shot fstat/close interruption while
+        # keeping persistent uncertainty explicitly owned for a later close().
+        for _attempt in range(2):
+            binding = self._pending_fd_binding
+            if binding is None:
+                break
+            try:
+                binding.close()
+            except BaseException as error:
+                failures.append(error)
+            if not binding.has_owned_descriptors:
+                self._pending_fd_binding = None
+                break
+        if len(failures) == 1:
+            raise failures[0]
+        if failures:
+            raise BaseExceptionGroup(
+                "inherited descriptor cleanup retry failures",
+                failures,
+            )
+
     def _adopt_started_process(
         self,
         process: subprocess.Popen[bytes],
@@ -347,6 +678,10 @@ class FfmpegFrameSource:
         self._failure_code = failure_code
         cleanup_code: str | None = None
         cleanup_failures: list[BaseException] = []
+        try:
+            self._close_bound_descriptors()
+        except BaseException as cleanup_error:
+            cleanup_failures.append(cleanup_error)
         process = self._process
         if process is not None:
             try:
@@ -590,6 +925,10 @@ class FfmpegFrameSource:
 
         if self._state == "closed":
             return
+        # Descriptor cleanup can remain pending after a setup failure if every
+        # bounded immediate retry was interrupted or failed. Every later close
+        # attempt must retry that ownership before handling the terminal state.
+        self._close_bound_descriptors()
         if self._state == "new":
             if self._process is None:
                 self._command = ()
@@ -785,6 +1124,13 @@ class FfmpegFrameSource:
     def _raise_failure(self, code: str) -> NoReturn:
         self._failure_code = code
         cleanup_failures: list[BaseException] = []
+        try:
+            self._close_bound_descriptors()
+        except BaseException as cleanup_error:
+            cleanup_failures.append(cleanup_error)
+        if self._process is None:
+            self._command = ()
+            self._source = None
         if self._process is not None:
             try:
                 cleanup_code = self._terminate_and_reap()
@@ -1049,11 +1395,16 @@ class FfmpegFrameSource:
         return self._selector
 
 
-def _validate_command(command: Sequence[str]) -> tuple[str, ...]:
+def _validate_command(
+    command: Sequence[str | InheritedFdArgument],
+) -> tuple[str | InheritedFdArgument, ...]:
     if isinstance(command, (str, bytes)) or not isinstance(command, Sequence):
         raise TypeError("command must be a sequence of text arguments")
-    normalized: list[str] = []
+    normalized: list[str | InheritedFdArgument] = []
     for argument in command:
+        if type(argument) is InheritedFdArgument:
+            normalized.append(argument)
+            continue
         if type(argument) is not str:
             raise TypeError("command arguments must be text")
         if not argument or "\0" in argument:
@@ -1062,6 +1413,132 @@ def _validate_command(command: Sequence[str]) -> tuple[str, ...]:
     if not normalized:
         raise ValueError("command must not be empty")
     return tuple(normalized)
+
+
+def _borrowed_descriptor_signature(
+    descriptor: int,
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int | None]:
+    flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    try:
+        offset: int | None = os.lseek(descriptor, 0, os.SEEK_CUR)
+    except OSError:
+        offset = None
+    return (*_descriptor_identity(status), int(flags), offset)
+
+
+def _handled_start_signals() -> set[signal.Signals]:
+    handled: set[signal.Signals] = set()
+    for selected in signal.valid_signals():
+        if selected in {signal.SIGKILL, signal.SIGSTOP}:
+            continue
+        try:
+            handler = signal.getsignal(selected)
+        except (OSError, ValueError):
+            continue
+        if callable(handler):
+            handled.add(selected)
+    return handled
+
+
+def _close_owned_inherited_descriptor(
+    owned: _OwnedInheritedDescriptor,
+) -> BaseException | None:
+    reservation = owned.reservation
+    descriptor = owned.descriptor
+    if reservation is None or descriptor is None:
+        owned.reservation = None
+        return None
+
+    try:
+        before = os.fstat(descriptor)
+    except OSError as error:
+        if error.errno == errno.EBADF:
+            return _disown_inherited_reservation(owned)
+        return RuntimeError("inherited descriptor cleanup failed")
+    except BaseException as error:
+        return error
+
+    close_identity = _descriptor_identity(before)
+    allowed_identities = {owned.identity}
+    if not owned.bound and owned.reservation_identity is not None:
+        allowed_identities.add(owned.reservation_identity)
+    if (
+        owned.dup2_attempted
+        and close_identity not in allowed_identities
+    ):
+        # The numeric slot now belongs to somebody else. Never close the
+        # replacement, and forget the stale ownership claim.
+        disown_error = _disown_inherited_reservation(owned)
+        return disown_error or RuntimeError(
+            "inherited descriptor cleanup failed"
+        )
+
+    try:
+        _close_inherited_reservation(reservation)
+    except BaseException as close_error:
+        verification_error: BaseException | None = None
+        try:
+            after = os.fstat(descriptor)
+        except OSError as error:
+            if error.errno == errno.EBADF:
+                verification_error = _disown_inherited_reservation(owned)
+            else:
+                verification_error = RuntimeError(
+                    "inherited descriptor cleanup verification failed"
+                )
+        except BaseException as error:
+            verification_error = error
+        else:
+            if _descriptor_identity(after) != close_identity:
+                # A close hook may have closed the owned FD, opened an unrelated
+                # object into the same numeric slot, and then raised. Preserve
+                # that replacement by dropping only the stale ownership record.
+                verification_error = _disown_inherited_reservation(owned)
+
+        normalized_close_error: BaseException
+        if isinstance(close_error, Exception):
+            normalized_close_error = RuntimeError(
+                "inherited descriptor cleanup failed"
+            )
+        else:
+            normalized_close_error = close_error
+        if verification_error is None:
+            return normalized_close_error
+        return BaseExceptionGroup(
+            "inherited descriptor close and verification failures",
+            [normalized_close_error, verification_error],
+        )
+
+    owned.reservation = None
+    return None
+
+
+def _close_inherited_reservation(reservation: socket.socket) -> None:
+    reservation.close()
+
+
+def _disown_inherited_reservation(
+    owned: _OwnedInheritedDescriptor,
+) -> BaseException | None:
+    reservation = owned.reservation
+    if reservation is None:
+        return None
+    try:
+        reservation.detach()
+    except OSError:
+        if reservation.fileno() >= 0:
+            return RuntimeError(
+                "inherited descriptor ownership release failed"
+            )
+    except BaseException as error:
+        return error
+    owned.reservation = None
+    return None
+
+
+def _descriptor_identity(status: os.stat_result) -> tuple[int, int, int]:
+    return status.st_dev, status.st_ino, stat.S_IFMT(status.st_mode)
 
 
 def _validate_source_kind(source_kind: str) -> str:

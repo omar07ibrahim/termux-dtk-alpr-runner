@@ -70,12 +70,20 @@ class CanonicalFixtureTests(unittest.TestCase):
         self.assertIn("examples/synthetic-media-v1.json", paths)
         self.assertIn("requirements-media-evidence.lock", paths)
         self.assertIn("tests/test_runtime_io.py", paths)
+        self.assertIn("tools/probe_media.py", paths)
         self.assertEqual(
             {
                 path.relative_to(renderer.REPOSITORY).as_posix()
                 for path in (renderer.REPOSITORY / "tests").glob("test_*.py")
             },
             {path for path in paths if path.startswith("tests/test_")},
+        )
+        self.assertEqual(
+            {
+                path.relative_to(renderer.REPOSITORY).as_posix()
+                for path in (renderer.REPOSITORY / "tools").glob("*.py")
+            },
+            {path for path in paths if path.startswith("tools/")},
         )
 
 
