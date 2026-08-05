@@ -2847,10 +2847,10 @@ def _privacy_scan(name: str, payload: bytes) -> None:
             continue
         escaped = re.escape(encoded)
         identity_contexts = (
-            rb"(?<![A-Za-z0-9_])"
+            rb"(?<![A-Za-z0-9])"
             rb"(?:user(?:name)?|login|host(?:name)?)[\"']?\s*[:=]\s*[\"']?"
             + escaped
-            + rb"(?:[\"'\s,;}\]]|$)",
+            + rb"(?:[\"'\s,;:./\\}\]]|$)",
             rb"(?<![A-Za-z0-9_.-])" + escaped + rb"@[A-Za-z0-9_.-]+",
             rb"(?:^|[/\\])" + escaped + rb"(?:[/\\]|$)",
             rb"://" + escaped + rb"(?::[0-9]+)?(?:[/\s]|$)",

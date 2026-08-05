@@ -1445,6 +1445,7 @@ class RendererDefenseTests(unittest.TestCase):
         environment = {
             "USER": "runner",
             "LOGNAME": "runner",
+            "SUDO_USER": "runner",
             "HOSTNAME": "build-node-123",
             "PORTFOLIO_SECRET": "private-environment-marker",
         }
@@ -1455,10 +1456,13 @@ class RendererDefenseTests(unittest.TestCase):
             )
             unsafe_payloads = (
                 b'{"user":"runner"}',
+                b"sudo_user=runner",
                 b"runner@build-host",
                 b"/tmp/runner/session",
                 b"https://runner:8443/status",
                 b'{"hostname":"build-node-123"}',
+                b"host=build-node-123:8443",
+                b"hostname=build-node-123.internal",
                 b"prefix private-environment-marker suffix",
             )
             for payload in unsafe_payloads:

@@ -177,9 +177,9 @@
       "sha256": "e155f551a501eac0145cff56bcaee4bb535b6faa98548198f811f5f3c387a820"
     },
     {
-      "bytes": 63360,
+      "bytes": 63530,
       "path": "tests/test_render_readme_visuals.py",
-      "sha256": "12b8937efa32bcf98ac18a843ae1a050fa2a8ba0b5550cb19978f1d92115338b"
+      "sha256": "b6a4faed098265b00fde0bdcb5791e93d686acdb9200707a2aa6e3bcce58600b"
     },
     {
       "bytes": 12610,
@@ -212,9 +212,9 @@
       "sha256": "964f6644efe5e348c92cc53551b1f3fd8ec64f1990d9b2befdbb9d7a9b118b64"
     },
     {
-      "bytes": 118687,
+      "bytes": 118691,
       "path": "tools/render_readme_visuals.py",
-      "sha256": "bcaf2fd73359768c4796d013e9ff4ae30e63a0f458848750bc9e953d77701fb4"
+      "sha256": "d7dfd1966648d5c6f9e6fde6cdad41fd43d7958b8e4c31073d2b534df7a88f73"
     }
   ],
   "lanes": {
