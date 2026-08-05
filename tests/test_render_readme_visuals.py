@@ -1441,6 +1441,33 @@ class RendererDefenseTests(unittest.TestCase):
             ):
                 renderer._privacy_scan("unsafe.txt", payload)
 
+    def test_privacy_scan_distinguishes_product_words_from_host_identity(self) -> None:
+        environment = {
+            "USER": "runner",
+            "LOGNAME": "runner",
+            "HOSTNAME": "build-node-123",
+            "PORTFOLIO_SECRET": "private-environment-marker",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False):
+            renderer._privacy_scan(
+                "safe.txt",
+                b"Termux DTK ALPR Runner executes alpr_runner contracts.",
+            )
+            unsafe_payloads = (
+                b'{"user":"runner"}',
+                b"runner@build-host",
+                b"/tmp/runner/session",
+                b"https://runner:8443/status",
+                b'{"hostname":"build-node-123"}',
+                b"prefix private-environment-marker suffix",
+            )
+            for payload in unsafe_payloads:
+                with (
+                    self.subTest(payload=payload),
+                    self.assertRaises(renderer.EvidenceError),
+                ):
+                    renderer._privacy_scan("unsafe.txt", payload)
+
     def test_svg_validator_rejects_external_and_inaccessible_content(self) -> None:
         declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
         inaccessible = (

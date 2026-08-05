@@ -2816,23 +2816,49 @@ def _privacy_scan(name: str, payload: bytes) -> None:
     for pattern in _SECRET_MARKERS:
         if pattern.search(payload):
             raise EvidenceError(f"{name} contains a secret-like value")
-    environment_values = {
+    identity_values = {
         os.environ.get("USER", ""),
         os.environ.get("LOGNAME", ""),
         os.uname().nodename,
     }
-    sensitive_environment_name = re.compile(
-        r"(?i)(?:user|login|host|token|secret|password|credential|api[_-]?key|"
-        r"access[_-]?key)"
+    identity_environment_name = re.compile(
+        r"(?i)(?:^|_)(?:user(?:name)?|logname|login|host(?:name)?)(?:$|_)"
     )
-    environment_values.update(
+    identity_values.update(
         value
         for key, value in os.environ.items()
-        if sensitive_environment_name.search(key)
+        if identity_environment_name.search(key)
     )
-    for environment_value in environment_values:
+    secret_environment_name = re.compile(
+        r"(?i)(?:token|secret|password|credential|api[_-]?key|access[_-]?key)"
+    )
+    secret_values = {
+        value
+        for key, value in os.environ.items()
+        if secret_environment_name.search(key)
+    }
+    for environment_value in secret_values:
         encoded = environment_value.encode("utf-8", "ignore")
         if len(encoded) >= 6 and encoded.lower() in lowered:
+            raise EvidenceError(f"{name} contains host identity metadata")
+    for environment_value in identity_values:
+        encoded = environment_value.encode("utf-8", "ignore")
+        if len(encoded) < 6:
+            continue
+        escaped = re.escape(encoded)
+        identity_contexts = (
+            rb"(?<![A-Za-z0-9_])"
+            rb"(?:user(?:name)?|login|host(?:name)?)[\"']?\s*[:=]\s*[\"']?"
+            + escaped
+            + rb"(?:[\"'\s,;}\]]|$)",
+            rb"(?<![A-Za-z0-9_.-])" + escaped + rb"@[A-Za-z0-9_.-]+",
+            rb"(?:^|[/\\])" + escaped + rb"(?:[/\\]|$)",
+            rb"://" + escaped + rb"(?::[0-9]+)?(?:[/\s]|$)",
+        )
+        if any(
+            re.search(pattern, payload, flags=re.IGNORECASE)
+            for pattern in identity_contexts
+        ):
             raise EvidenceError(f"{name} contains host identity metadata")
 
 
