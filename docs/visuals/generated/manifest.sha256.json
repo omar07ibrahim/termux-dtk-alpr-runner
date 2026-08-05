@@ -22,9 +22,9 @@
   ],
   "inputs": [
     {
-      "bytes": 1288,
+      "bytes": 1265,
       "path": ".github/workflows/ci.yml",
-      "sha256": "0333f73d92b39cb9a67bc7c7960477642d67cd23f6fe98fe16737b9680b8bb8b"
+      "sha256": "765740907d41171b24cbe7d007c72aa78415608d50970c2e59c6ce6c7d1fe685"
     },
     {
       "bytes": 169,
