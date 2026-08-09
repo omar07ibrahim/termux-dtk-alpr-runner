@@ -4,9 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_INPUT: "1"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -14,6 +19,7 @@ concurrency:
 
 jobs:
   vendor-independent-contracts:
+    name: Vendor-independent contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -41,3 +47,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Verify README evidence is byte-current
         run: python -S tools/render_readme_visuals.py --check
+      - name: Reject tracked or unignored drift
+        run: |
+          git diff --exit-code
+          test -z "1000 4 24 27 30 105 113 1000git status --porcelain --untracked-files=all)"
