@@ -3195,7 +3195,7 @@ def _write_stage(
         descriptor = os.open(
             name,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC,
-            0o644,
+            0o600,
             dir_fd=stage.fd,
         )
         try:

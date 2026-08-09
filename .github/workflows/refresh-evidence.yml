@@ -1,0 +1,54 @@
+name: Refresh evidence manifest
+
+on:
+  push:
+    branches: [fix/codeql-file-modes]
+    paths:
+      - .github/workflows/refresh-evidence.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event.head_commit.message == 'Harden evidence file creation modes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the exact feature head
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: fix/codeql-file-modes
+          fetch-depth: 0
+      - name: Set up exact evidence Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12.3"
+      - name: Install the hash-locked evidence runtime
+        run: >-
+          umask 077 &&
+          python -m pip install
+          --disable-pip-version-check
+          --no-deps
+          --require-hashes
+          --only-binary=:all:
+          --target .t/media-evidence-runtime
+          -r requirements-media-evidence.lock
+      - name: Regenerate and constrain the change
+        run: |
+          python -S tools/render_readme_visuals.py --write
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "docs/visuals/generated/manifest.sha256.json"
+          python -S tools/render_readme_visuals.py --check
+      - name: Commit as Omar Ibrahim and push linearly
+        env:
+          GIT_AUTHOR_NAME: Omar Ibrahim
+          GIT_AUTHOR_EMAIL: 31526072+omar07ibrahim@users.noreply.github.com
+          GIT_COMMITTER_NAME: Omar Ibrahim
+          GIT_COMMITTER_EMAIL: 31526072+omar07ibrahim@users.noreply.github.com
+        run: |
+          git add -- docs/visuals/generated/manifest.sha256.json
+          git diff --cached --quiet && exit 1
+          git commit -m "Refresh edge evidence manifest"
+          git push origin HEAD:fix/codeql-file-modes

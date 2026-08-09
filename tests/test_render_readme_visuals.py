@@ -558,7 +558,7 @@ class RendererDefenseTests(unittest.TestCase):
             def racing_open(
                 path: os.PathLike[str] | str,
                 flags: int,
-                mode: int = 0o777,
+                mode: int = 0o600,
                 *,
                 dir_fd: int | None = None,
             ) -> int:
@@ -608,7 +608,7 @@ class RendererDefenseTests(unittest.TestCase):
             def racing_open(
                 path: os.PathLike[str] | str,
                 flags: int,
-                mode: int = 0o777,
+                mode: int = 0o600,
                 *,
                 dir_fd: int | None = None,
             ) -> int:
