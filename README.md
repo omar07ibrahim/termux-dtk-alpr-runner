@@ -1,5 +1,7 @@
 # Termux DTK ALPR Runner
 
+[![CI](https://github.com/omar07ibrahim/termux-dtk-alpr-runner/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/omar07ibrahim/termux-dtk-alpr-runner/actions/workflows/ci.yml) [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://github.com/omar07ibrahim/termux-dtk-alpr-runner/blob/main/.github/workflows/ci.yml)
+
 This repository is an experimental edge-vision integration for running the
 proprietary DTK **Linux ARM64** SDK inside a Termux-managed Ubuntu environment.
 The SDK files and license are deliberately not part of this repository. Place
@@ -20,6 +22,10 @@ It is not an Android APK and it is not trying to load Linux `.so` files through 
 > end-to-end benchmark or independently verifiable recognition-accuracy result.
 > See the [project charter](docs/charter.md) and
 > [threat model](docs/threat-model.md).
+
+## Hosted verification
+
+The pinned [CI workflow](.github/workflows/ci.yml) runs on Ubuntu 24.04 with exact CPython 3.12.3. It compiles the Python surfaces, installs only the hash-locked evidence FFmpeg runtime, runs all 276 vendor-independent tests, reconstructs the complete 15-file visual/evidence inventory, and rejects tracked or unignored drift. It never installs or executes DTK, opens a camera, or uses real plate data.
 
 ## What It Does
 
