@@ -50,4 +50,4 @@ jobs:
       - name: Reject tracked or unignored drift
         run: |
           git diff --exit-code
-          test -z "1000 4 24 27 30 105 113 1000git status --porcelain --untracked-files=all)"
+          test -z "$(git status --porcelain --untracked-files=all)"
